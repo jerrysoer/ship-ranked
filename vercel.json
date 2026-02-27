@@ -1,5 +1,5 @@
 {
-  "buildCommand": "mkdir -p dist && echo 'API-only deploy — no frontend build'",
+  "buildCommand": "mkdir -p dist && echo ok > dist/index.html",
   "outputDirectory": "dist",
   "framework": null,
   "installCommand": "npm install",
