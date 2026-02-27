@@ -811,7 +811,7 @@ function HowRankingsWork() {
             marginTop: '0',
             marginBottom: '16px',
           }}>
-            The chart ranks momentum, not legacy.
+            One metric: stars gained over 7 days.
           </p>
 
           <div style={{
@@ -822,16 +822,15 @@ function HowRankingsWork() {
             marginBottom: '24px',
           }}>
             <p style={{ margin: '0 0 12px' }}>
-              Every project here earned its spot the same way — by getting people excited
-              enough to star it this week.
+              Every day we snapshot every project's star count. The chart shows how many
+              new stars each project picked up over a rolling 7-day window.
             </p>
             <p style={{ margin: '0 0 12px' }}>
-              We count one thing: stars gained in the last 7 days. A repo with 12 total stars
-              but +10 this week ranks above a repo with 500 total stars but only +2 this week.
-              That's it. No algorithm. No editorial picks. No pay-to-play.
+              A repo with 12 total stars but +10 this week ranks above a repo with
+              500 total stars but only +2. No algorithm, no editorial picks, no pay-to-play.
             </p>
             <p style={{ margin: 0 }}>
-              This means the chart resets every week. Last week's #1 has to earn it again.
+              The chart rolls forward every day. Last week's #1 has to earn it again.
               A project you shipped yesterday can be at the top by Friday.
             </p>
           </div>
@@ -844,8 +843,8 @@ function HowRankingsWork() {
                 body: 'A brand-new repo with 50 stars this week outranks a 10k-star repo with 3. The chart measures what\'s happening now, not what happened last year.',
               },
               {
-                title: 'Simple is honest.',
-                body: 'One metric, no weights, no editorial layer. You can verify every ranking by checking the repo\'s star history yourself.',
+                title: 'One number, no tricks.',
+                body: 'Stars gained in 7 days. That\'s the only input. You can verify any ranking yourself by checking the repo\'s star history.',
               },
               {
                 title: 'It rewards shipping.',
@@ -913,9 +912,8 @@ function HowRankingsWork() {
               lineHeight: 1.6,
               margin: 0,
             }}>
-              A project tagged NEW appeared on the chart for the first time this week.
-              It might be a brand-new repo or an older one that just hit its stride.
-              Either way, it wasn't ranked last week and it is now.
+              A project tagged NEW wasn't on the chart yesterday but is today.
+              It could be a brand-new repo or an older one that just hit its stride.
             </p>
           </div>
 
