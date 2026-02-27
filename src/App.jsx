@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { supabase } from './lib/supabase'
 
 // ─── Analytics ───────────────────────────────────────────────────────────────
@@ -244,6 +244,13 @@ function getInitialCategory() {
   return params.get('category') || 'all'
 }
 
+function getDeepLinkProject() {
+  const params = new URLSearchParams(window.location.search)
+  const slug = params.get('project')
+  if (!slug) return null
+  return slug.replace('--', '/')
+}
+
 // ─── Copy Share ──────────────────────────────────────────────────────────────
 
 async function copyShare(project, setCopiedId) {
@@ -386,16 +393,17 @@ function ShareButton({ project, copiedId, setCopiedId, size = 'normal' }) {
 
 // ─── Podium Card ─────────────────────────────────────────────────────────────
 
-function PodiumCard({ project, position, copiedId, setCopiedId }) {
+function PodiumCard({ project, position, copiedId, setCopiedId, highlighted }) {
   const starsAnimated = useCountUp(project.stars_gained_7d, 800, 500 + position * 100)
   const isFirst = position === 0
 
   return (
     <a
+      data-project={project.full_name}
       href={project.url}
       target="_blank"
       rel="noopener noreferrer"
-      onClick={() => track('podium-click', { name: project.name, rank: project.rank })}
+      onClick={() => track('project-click', { name: project.name, rank: project.rank, category: project.category })}
       style={{
         display: 'block',
         textDecoration: 'none',
@@ -404,9 +412,11 @@ function PodiumCard({ project, position, copiedId, setCopiedId }) {
           ? 'radial-gradient(ellipse at top, rgba(255,184,48,0.08) 0%, var(--surface) 70%)'
           : 'var(--surface)',
         border: `1px solid ${isFirst ? 'rgba(255,184,48,0.3)' : 'var(--border)'}`,
+        borderLeft: highlighted ? '3px solid var(--gold)' : undefined,
+        boxShadow: highlighted ? '0 0 20px rgba(255,184,48,0.15)' : undefined,
         borderRadius: '12px',
         padding: '24px 20px',
-        transition: 'transform 0.2s, border-color 0.2s',
+        transition: 'transform 0.2s, border-color 0.2s, box-shadow 0.6s, border-left 0.6s',
         cursor: 'pointer',
         position: 'relative',
         overflow: 'hidden',
@@ -517,16 +527,17 @@ function PodiumCard({ project, position, copiedId, setCopiedId }) {
 
 // ─── Chart Row ───────────────────────────────────────────────────────────────
 
-function ChartRow({ project, index, copiedId, setCopiedId }) {
+function ChartRow({ project, index, copiedId, setCopiedId, highlighted }) {
   const [ref, isVisible] = useScrollReveal()
 
   return (
     <a
       ref={ref}
+      data-project={project.full_name}
       href={project.url}
       target="_blank"
       rel="noopener noreferrer"
-      onClick={() => track('row-click', { name: project.name, rank: project.rank })}
+      onClick={() => track('project-click', { name: project.name, rank: project.rank, category: project.category })}
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -534,6 +545,8 @@ function ChartRow({ project, index, copiedId, setCopiedId }) {
         padding: '12px 16px',
         minHeight: '64px',
         borderBottom: '1px solid var(--border)',
+        borderLeft: highlighted ? '3px solid var(--gold)' : undefined,
+        boxShadow: highlighted ? '0 0 20px rgba(255,184,48,0.15)' : undefined,
         textDecoration: 'none',
         color: 'inherit',
         transition: 'all 0.2s',
@@ -541,11 +554,12 @@ function ChartRow({ project, index, copiedId, setCopiedId }) {
         touchAction: 'manipulation',
         opacity: isVisible ? 1 : 0,
         transform: isVisible ? 'translateX(0)' : 'translateX(-8px)',
-        transitionProperty: 'opacity, transform, background, border-color',
+        transitionProperty: 'opacity, transform, background, border-color, box-shadow, border-left',
         transitionDuration: '0.4s',
         transitionDelay: `${Math.min(index * 40, 320)}ms`,
       }}
       onMouseEnter={(e) => {
+        if (highlighted) return
         e.currentTarget.style.transform = 'translateX(2px)'
         e.currentTarget.style.background = 'rgba(77,156,255,0.03)'
         e.currentTarget.style.borderLeftColor = 'var(--accent-blue)'
@@ -553,6 +567,7 @@ function ChartRow({ project, index, copiedId, setCopiedId }) {
         e.currentTarget.style.borderLeftStyle = 'solid'
       }}
       onMouseLeave={(e) => {
+        if (highlighted) return
         e.currentTarget.style.transform = 'translateX(0)'
         e.currentTarget.style.background = 'transparent'
         e.currentTarget.style.borderLeftColor = 'transparent'
@@ -943,6 +958,8 @@ export default function App() {
   const [category, setCategory] = useState(getInitialCategory)
   const [copiedId, setCopiedId] = useState(null)
   const [scrolled, setScrolled] = useState(false)
+  const [highlightedProject, setHighlightedProject] = useState(null)
+  const deepLinkTarget = useMemo(() => getDeepLinkProject(), [])
 
   // Fetch data
   useEffect(() => {
@@ -970,6 +987,26 @@ export default function App() {
     fetchData()
   }, [category])
 
+  // Deep-link: scroll to ?project= and highlight
+  useEffect(() => {
+    if (!deepLinkTarget || loading || projects.length === 0) return
+    const match = projects.find(p => p.full_name === deepLinkTarget)
+    if (!match) return
+
+    track('og-view', { name: match.name, rank: match.rank })
+    setHighlightedProject(match.full_name)
+
+    // Wait a tick for DOM to render, then scroll
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`[data-project="${CSS.escape(match.full_name)}"]`)
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    })
+
+    // Clear highlight after 3s
+    const timer = setTimeout(() => setHighlightedProject(null), 3000)
+    return () => clearTimeout(timer)
+  }, [deepLinkTarget, loading, projects])
+
   // Scroll detection for header glass effect
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 240)
@@ -987,7 +1024,7 @@ export default function App() {
       url.searchParams.set('category', value)
     }
     window.history.replaceState({}, '', url)
-    track('category-change', { category: value })
+    track('category-filter', { category: value })
   }, [])
 
   const podium = projects.slice(0, 3)
@@ -1162,6 +1199,7 @@ export default function App() {
                   position={i}
                   copiedId={copiedId}
                   setCopiedId={setCopiedId}
+                  highlighted={highlightedProject === project.full_name}
                 />
               ))}
             </div>
@@ -1179,6 +1217,7 @@ export default function App() {
                   index={i}
                   copiedId={copiedId}
                   setCopiedId={setCopiedId}
+                  highlighted={highlightedProject === project.full_name}
                 />
               ))}
             </div>

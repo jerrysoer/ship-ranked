@@ -60,7 +60,7 @@ function buildHtml({ title, description, ogImageUrl, redirectUrl }) {
 </head>
 <body>
   <p>Redirecting to <a href="${redirectSafe}">ShipRanked</a>...</p>
-  <script>window.location.replace(${JSON.stringify(redirectUrl)})</script>
+  <script>window.location.replace(${JSON.stringify(redirectUrl).replace(/</g, '\\u003c')})</script>
 </body>
 </html>`
 }
