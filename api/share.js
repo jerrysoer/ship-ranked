@@ -2,16 +2,20 @@
 // then redirects real users to the SPA.
 // Usage: /api/share?slug=owner--repo  (or via rewrite: /p/owner--repo)
 
-import { createClient } from '@supabase/supabase-js'
-
-function getSupabase() {
+async function fetchProject(projectId) {
   const url = process.env.SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!url || !key) return null
-  return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } })
+
+  const res = await fetch(
+    `${url}/rest/v1/ranked_projects?id=eq.${encodeURIComponent(projectId)}&select=name,full_name,builder_handle,rank,stars_total,stars_gained_7d&limit=1`,
+    { headers: { apikey: key, Authorization: `Bearer ${key}` } }
+  )
+  if (!res.ok) return null
+  const rows = await res.json()
+  return rows[0] || null
 }
 
-// Escape dynamic content to prevent XSS in HTML output
 function escapeHtml(str) {
   return String(str)
     .replace(/&/g, '&amp;')
@@ -67,13 +71,11 @@ export default async function handler(req, res) {
   const protocol = host.includes('localhost') ? 'http' : 'https'
   const baseUrl = `${protocol}://${host}`
 
-  // Default fallback values
   let title = 'ShipRanked — GitHub Leaderboard for Claude Code Projects'
   let description = 'See which Claude Code projects are gaining the most stars this week.'
   let ogImageUrl = `${baseUrl}/api/og`
   let redirectUrl = 'https://jerrysoer.github.io/ship-ranked/'
 
-  // If we have a valid slug, try to fetch project data
   if (slug && slug.includes('--')) {
     const [owner, ...repoParts] = slug.split('--')
     const repo = repoParts.join('--')
@@ -82,28 +84,19 @@ export default async function handler(req, res) {
     ogImageUrl = `${baseUrl}/api/og?slug=${slug}`
     redirectUrl = `https://jerrysoer.github.io/ship-ranked/?project=${slug}`
 
-    const supabase = getSupabase()
-    if (supabase) {
-      try {
-        const { data, error } = await supabase
-          .from('ranked_projects')
-          .select('name, full_name, builder_handle, rank, stars_total, stars_gained_7d')
-          .eq('id', projectId)
-          .single()
+    try {
+      const data = await fetchProject(projectId)
+      if (data) {
+        const projectName = data.name || data.full_name || `${owner}/${repo}`
+        const rank = data.rank || '?'
+        const starsTotal = data.stars_total != null ? Number(data.stars_total).toLocaleString() : '0'
+        const starsGained = data.stars_gained_7d != null ? Number(data.stars_gained_7d).toLocaleString() : '0'
 
-        if (data && !error) {
-          const projectName = data.name || data.full_name || `${owner}/${repo}`
-          const rank = data.rank || '?'
-          const starsTotal = data.stars_total != null ? Number(data.stars_total).toLocaleString() : '0'
-          const starsGained = data.stars_gained_7d != null ? Number(data.stars_gained_7d).toLocaleString() : '0'
-
-          title = `${projectName} — #${rank} on ShipRanked this week`
-          description = `★ ${starsTotal} stars · ↑ +${starsGained} this week · Built with Claude Code`
-        }
-      } catch (err) {
-        console.error('Share page Supabase error:', err)
-        // Fall through to generic share page
+        title = `${projectName} — #${rank} on ShipRanked this week`
+        description = `★ ${starsTotal} stars · ↑ +${starsGained} this week · Built with Claude Code`
       }
+    } catch (err) {
+      console.error('Share page error:', err)
     }
   }
 
