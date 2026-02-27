@@ -1,5 +1,6 @@
 {
-  "buildCommand": "echo 'API-only deploy — no frontend build'",
+  "buildCommand": "mkdir -p dist && echo 'API-only deploy — no frontend build'",
+  "outputDirectory": "dist",
   "framework": null,
   "installCommand": "npm install",
   "crons": [
