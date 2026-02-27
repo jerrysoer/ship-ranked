@@ -247,7 +247,7 @@ function getInitialCategory() {
 // ─── Copy Share ──────────────────────────────────────────────────────────────
 
 async function copyShare(project, setCopiedId) {
-  const shareUrl = `https://shipranked-api.vercel.app/p/${project.full_name.replace('/', '--')}`
+  const shareUrl = `https://ship-ranked.vercel.app/p/${project.full_name.replace('/', '--')}`
   const text = `My project ranked #${project.rank} on ShipRanked this week\n\n` +
     `★ ${project.stars_total.toLocaleString()} total stars  ↑ +${project.stars_gained_7d} gained this week\n` +
     `Built with Claude Code\n\n` +
