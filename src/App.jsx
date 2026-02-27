@@ -228,6 +228,15 @@ function useScrollReveal(options = {}) {
   return [ref, isVisible]
 }
 
+function useDebounce(value, delay) {
+  const [debounced, setDebounced] = useState(value)
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delay)
+    return () => clearTimeout(t)
+  }, [value, delay])
+  return debounced
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function formatNumber(n) {
@@ -249,6 +258,13 @@ function getDeepLinkProject() {
   const slug = params.get('project')
   if (!slug) return null
   return slug.replace('--', '/')
+}
+
+function getSignalLabel(signal) {
+  if (signal === 'claude-md') return 'CLAUDE.md'
+  if (signal === 'topic-claude-code') return 'Claude Code'
+  if (signal === 'topic-vibe-coding') return 'Vibe Coded'
+  return signal || ''
 }
 
 // ─── Copy Share ──────────────────────────────────────────────────────────────
@@ -391,19 +407,47 @@ function ShareButton({ project, copiedId, setCopiedId, size = 'normal' }) {
   )
 }
 
+// ─── Sparkline ───────────────────────────────────────────────────────────────
+
+function Sparkline({ data, width = 48, height = 16, color = 'var(--up)' }) {
+  if (!data || data.length < 2) return null
+  const min = Math.min(...data)
+  const max = Math.max(...data)
+  const range = max - min || 1
+  const points = data
+    .map((v, i) => {
+      const x = (i / (data.length - 1)) * width
+      const y = height - ((v - min) / range) * (height - 2) - 1
+      return `${x},${y}`
+    })
+    .join(' ')
+  return (
+    <svg width={width} height={height} style={{ flexShrink: 0, display: 'block' }}>
+      <polyline
+        points={points}
+        fill="none"
+        stroke={color}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 // ─── Podium Card ─────────────────────────────────────────────────────────────
 
-function PodiumCard({ project, position, copiedId, setCopiedId, highlighted }) {
+function PodiumCard({ project, position, copiedId, setCopiedId, highlighted, sparklineData, onProjectClick }) {
   const starsAnimated = useCountUp(project.stars_gained_7d, 800, 500 + position * 100)
   const isFirst = position === 0
 
   return (
-    <a
+    <div
       data-project={project.full_name}
-      href={project.url}
-      target="_blank"
-      rel="noopener noreferrer"
-      onClick={() => track('project-click', { name: project.name, rank: project.rank, category: project.category })}
+      onClick={() => {
+        track('project-click', { name: project.name, rank: project.rank, category: project.category })
+        onProjectClick(project)
+      }}
       style={{
         display: 'block',
         textDecoration: 'none',
@@ -509,6 +553,7 @@ function PodiumCard({ project, position, copiedId, setCopiedId, highlighted }) {
           }}>
             ★ {formatNumber(project.stars_total)}
           </span>
+          <Sparkline data={sparklineData} />
           <span style={{
             fontFamily: 'var(--font-mono)',
             fontSize: '13px',
@@ -521,23 +566,23 @@ function PodiumCard({ project, position, copiedId, setCopiedId, highlighted }) {
         </div>
         <ShareButton project={project} copiedId={copiedId} setCopiedId={setCopiedId} size="small" />
       </div>
-    </a>
+    </div>
   )
 }
 
 // ─── Chart Row ───────────────────────────────────────────────────────────────
 
-function ChartRow({ project, index, copiedId, setCopiedId, highlighted }) {
+function ChartRow({ project, index, copiedId, setCopiedId, highlighted, sparklineData, onProjectClick }) {
   const [ref, isVisible] = useScrollReveal()
 
   return (
-    <a
+    <div
       ref={ref}
       data-project={project.full_name}
-      href={project.url}
-      target="_blank"
-      rel="noopener noreferrer"
-      onClick={() => track('project-click', { name: project.name, rank: project.rank, category: project.category })}
+      onClick={() => {
+        track('project-click', { name: project.name, rank: project.rank, category: project.category })
+        onProjectClick(project)
+      }}
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -641,6 +686,9 @@ function ChartRow({ project, index, copiedId, setCopiedId, highlighted }) {
         <DeltaBadge project={project} />
       </div>
 
+      {/* Sparkline */}
+      <Sparkline data={sparklineData} />
+
       {/* Stars gained */}
       <div style={{
         fontFamily: 'var(--font-mono)',
@@ -684,7 +732,7 @@ function ChartRow({ project, index, copiedId, setCopiedId, highlighted }) {
       >
         <polyline points="9 18 15 12 9 6" />
       </svg>
-    </a>
+    </div>
   )
 }
 
@@ -748,6 +796,313 @@ function LoadingSkeleton() {
           <div className="skeleton" style={{ width: '48px', height: '14px' }} />
         </div>
       ))}
+    </div>
+  )
+}
+
+// ─── Project Modal ───────────────────────────────────────────────────────────
+
+function ProjectModal({ project, sparklineData, copiedId, setCopiedId, onClose }) {
+  const [badgeCopied, setBadgeCopied] = useState(false)
+  const [linkCopied, setLinkCopied] = useState(false)
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = '' }
+  }, [])
+
+  if (!project) return null
+
+  const slug = project.full_name.replace('/', '--')
+  const badgeUrl = `https://ship-ranked.vercel.app/api/badge?project=${slug}`
+  const shareUrl = `https://ship-ranked.vercel.app/p/${slug}`
+  const badgeMd = `[![ShipRanked](${badgeUrl})](${shareUrl})`
+
+  const copyBadge = async () => {
+    try {
+      await navigator.clipboard.writeText(badgeMd)
+      setBadgeCopied(true)
+      setTimeout(() => setBadgeCopied(false), 2000)
+    } catch { /* noop */ }
+  }
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+      setLinkCopied(true)
+      setTimeout(() => setLinkCopied(false), 2000)
+    } catch { /* noop */ }
+  }
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 100,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'rgba(0,0,0,0.6)',
+        backdropFilter: 'blur(4px)',
+        animation: 'fadeUp 0.2s ease-out',
+        padding: '16px',
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: 'var(--surface)',
+          border: '1px solid var(--border-bright)',
+          borderRadius: '16px',
+          padding: '32px 28px',
+          maxWidth: '480px',
+          width: '100%',
+          maxHeight: '90vh',
+          overflowY: 'auto',
+          animation: 'fadeUp 0.3s ease-out',
+          position: 'relative',
+        }}
+      >
+        {/* Close button */}
+        <button
+          onClick={onClose}
+          style={{
+            position: 'absolute',
+            top: '16px',
+            right: '16px',
+            width: '32px',
+            height: '32px',
+            borderRadius: '8px',
+            border: '1px solid var(--border)',
+            background: 'transparent',
+            color: 'var(--text-muted)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+
+        {/* Avatar + name */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+          <img
+            src={project.avatar_url}
+            alt=""
+            style={{ width: 40, height: 40, borderRadius: '50%', border: '1px solid var(--border)' }}
+          />
+          <div>
+            <div style={{ fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: '20px' }}>
+              {project.name}
+            </div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text-muted)' }}>
+              {project.full_name} {project.builder_handle && `· @${project.builder_handle}`}
+            </div>
+          </div>
+        </div>
+
+        {/* Description */}
+        <p style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: '13px',
+          color: 'var(--text-muted)',
+          lineHeight: 1.6,
+          margin: '16px 0',
+        }}>
+          {project.description}
+        </p>
+
+        {/* Badges */}
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
+          <span style={{
+            fontFamily: 'var(--font-body)',
+            fontSize: '11px',
+            fontWeight: 500,
+            color: 'var(--text-muted)',
+            background: 'var(--bg)',
+            padding: '3px 10px',
+            borderRadius: '4px',
+            border: '1px solid var(--border)',
+          }}>
+            {getCategoryLabel(project.category)}
+          </span>
+          {project.claude_signal && (
+            <span style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: '11px',
+              fontWeight: 500,
+              color: 'var(--claude-amber)',
+              background: 'rgba(255,140,66,0.1)',
+              padding: '3px 10px',
+              borderRadius: '4px',
+              border: '1px solid rgba(255,140,66,0.2)',
+            }}>
+              {getSignalLabel(project.claude_signal)}
+            </span>
+          )}
+        </div>
+
+        {/* Stats grid */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: '12px',
+          padding: '16px',
+          background: 'var(--bg)',
+          borderRadius: '10px',
+          border: '1px solid var(--border)',
+          marginBottom: '20px',
+        }}>
+          <div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-dim)', marginBottom: '4px' }}>RANK</div>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '28px', color: project.rank <= 3 ? 'var(--gold)' : 'var(--text-primary)' }}>
+              #{project.rank}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-dim)', marginBottom: '4px' }}>MOVEMENT</div>
+            <div style={{ fontSize: '20px' }}>
+              <DeltaBadge project={project} />
+            </div>
+          </div>
+          <div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-dim)', marginBottom: '4px' }}>TOTAL STARS</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '18px', fontWeight: 600 }}>
+              ★ {project.stars_total.toLocaleString()}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-dim)', marginBottom: '4px' }}>GAINED (7D)</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '18px', fontWeight: 600, color: 'var(--up)' }}>
+              +{project.stars_gained_7d.toLocaleString()}
+            </div>
+          </div>
+        </div>
+
+        {/* Sparkline (larger) */}
+        {sparklineData && sparklineData.length >= 2 && (
+          <div style={{
+            padding: '12px 16px',
+            background: 'var(--bg)',
+            borderRadius: '10px',
+            border: '1px solid var(--border)',
+            marginBottom: '20px',
+          }}>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-dim)', marginBottom: '8px' }}>7-DAY TREND</div>
+            <Sparkline data={sparklineData} width={200} height={60} />
+          </div>
+        )}
+
+        {/* Actions */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <a
+            href={project.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              padding: '12px',
+              borderRadius: '10px',
+              background: 'var(--accent-blue)',
+              color: '#fff',
+              fontFamily: 'var(--font-body)',
+              fontWeight: 600,
+              fontSize: '14px',
+              textDecoration: 'none',
+              transition: 'opacity 0.2s',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.9' }}
+            onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+              <polyline points="15 3 21 3 21 9" />
+              <line x1="10" y1="14" x2="21" y2="3" />
+            </svg>
+            View on GitHub
+          </a>
+
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button
+              onClick={copyLink}
+              style={{
+                flex: 1,
+                padding: '10px',
+                borderRadius: '10px',
+                border: '1px solid var(--border)',
+                background: linkCopied ? 'rgba(0,229,160,0.1)' : 'transparent',
+                color: linkCopied ? 'var(--up)' : 'var(--text-primary)',
+                fontFamily: 'var(--font-body)',
+                fontWeight: 500,
+                fontSize: '13px',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+              }}
+            >
+              {linkCopied ? 'Copied!' : 'Copy share link'}
+            </button>
+            <ShareButton project={project} copiedId={copiedId} setCopiedId={setCopiedId} />
+          </div>
+        </div>
+
+        {/* Badge embed */}
+        <div style={{
+          marginTop: '16px',
+          padding: '12px 16px',
+          background: 'var(--bg)',
+          borderRadius: '10px',
+          border: '1px solid var(--border)',
+        }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: '8px',
+          }}>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-dim)' }}>
+              README BADGE
+            </div>
+            <button
+              onClick={copyBadge}
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: '11px',
+                color: badgeCopied ? 'var(--up)' : 'var(--accent-blue)',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '2px 6px',
+              }}
+            >
+              {badgeCopied ? 'Copied!' : 'Copy'}
+            </button>
+          </div>
+          <code style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: '11px',
+            color: 'var(--text-muted)',
+            wordBreak: 'break-all',
+            lineHeight: 1.6,
+          }}>
+            {badgeMd}
+          </code>
+        </div>
+      </div>
     </div>
   )
 }
@@ -959,31 +1314,89 @@ export default function App() {
   const [highlightedProject, setHighlightedProject] = useState(null)
   const deepLinkTarget = useMemo(() => getDeepLinkProject(), [])
 
+  // New state: filters & sorting
+  const [sortBy, setSortBy] = useState('rank')
+  const [showNewOnly, setShowNewOnly] = useState(false)
+  const [smallOnly, setSmallOnly] = useState(false)
+  const [searchTerm, setSearchTerm] = useState('')
+  const debouncedSearch = useDebounce(searchTerm, 300)
+
+  // New state: banner
+  const [bannerDismissed, setBannerDismissed] = useState(() => {
+    try { return sessionStorage.getItem('sr-banner-dismissed') === '1' } catch { return false }
+  })
+
+  // New state: sparklines + modal
+  const [sparklines, setSparklines] = useState({})
+  const [detailProject, setDetailProject] = useState(null)
+
   // Fetch data
   useEffect(() => {
     async function fetchData() {
       setLoading(true)
       if (!supabase) {
-        // Filter mock data by category client-side
-        const filtered = category === 'all'
-          ? MOCK_DATA
-          : MOCK_DATA.filter(p => p.category === category)
+        let filtered = [...MOCK_DATA]
+        if (category !== 'all') filtered = filtered.filter(p => p.category === category)
+        if (showNewOnly) filtered = filtered.filter(p => p.is_new)
+        if (smallOnly) filtered = filtered.filter(p => p.stars_total < 1000)
+        if (sortBy === 'movers') {
+          filtered.sort((a, b) => (b.rank_delta || 0) - (a.rank_delta || 0))
+          filtered = filtered.map((p, i) => ({ ...p, rank: i + 1 }))
+        }
         setProjects(filtered)
         setLoading(false)
         return
       }
-      let query = supabase
-        .from('ranked_projects')
-        .select('*')
-        .order('rank', { ascending: true })
-        .limit(25)
+
+      let query = supabase.from('ranked_projects').select('*')
+
+      if (sortBy === 'movers') {
+        query = query.order('rank_delta', { ascending: false })
+      } else {
+        query = query.order('rank', { ascending: true })
+      }
+
+      query = query.limit(25)
       if (category !== 'all') query = query.eq('category', category)
+      if (showNewOnly) query = query.eq('is_new', true)
+      if (smallOnly) query = query.lt('stars_total', 1000)
+
       const { data } = await query
-      setProjects(data || [])
+      let results = data || []
+
+      // Re-assign visual rank when sorting by movers
+      if (sortBy === 'movers') {
+        results = results.map((p, i) => ({ ...p, rank: i + 1 }))
+      }
+
+      setProjects(results)
       setLoading(false)
     }
     fetchData()
-  }, [category])
+  }, [category, sortBy, showNewOnly, smallOnly])
+
+  // Fetch sparkline snapshots
+  useEffect(() => {
+    if (!supabase || projects.length === 0) return
+    async function fetchSparklines() {
+      const projectIds = projects.map(p => p.id)
+      const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString()
+      const { data } = await supabase
+        .from('ranked_snapshots')
+        .select('project_id,stars_total,captured_at')
+        .in('project_id', projectIds)
+        .gte('captured_at', sevenDaysAgo)
+        .order('captured_at', { ascending: true })
+      if (!data) return
+      const grouped = {}
+      for (const row of data) {
+        if (!grouped[row.project_id]) grouped[row.project_id] = []
+        grouped[row.project_id].push(row.stars_total)
+      }
+      setSparklines(grouped)
+    }
+    fetchSparklines()
+  }, [projects])
 
   // Deep-link: scroll to ?project= and highlight
   useEffect(() => {
@@ -993,14 +1406,12 @@ export default function App() {
 
     track('og-view', { name: match.name, rank: match.rank })
 
-    // Delay to let IntersectionObserver reveal rows (they start at opacity 0)
     const scrollTimer = setTimeout(() => {
       setHighlightedProject(match.full_name)
       const el = document.querySelector(`[data-project="${CSS.escape(match.full_name)}"]`)
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }, 600)
 
-    // Clear highlight after 3.6s total (0.6s delay + 3s visible)
     const clearTimer = setTimeout(() => setHighlightedProject(null), 3600)
     return () => { clearTimeout(scrollTimer); clearTimeout(clearTimer) }
   }, [deepLinkTarget, loading, projects])
@@ -1025,8 +1436,28 @@ export default function App() {
     track('category-filter', { category: value })
   }, [])
 
-  const podium = projects.slice(0, 3)
-  const rows = projects.slice(3)
+  // Banner dismiss handler
+  const dismissBanner = useCallback(() => {
+    setBannerDismissed(true)
+    try { sessionStorage.setItem('sr-banner-dismissed', '1') } catch { /* noop */ }
+  }, [])
+
+  // Client-side search filter
+  const filteredProjects = useMemo(() => {
+    if (!debouncedSearch) return projects
+    const q = debouncedSearch.toLowerCase()
+    return projects.filter(p =>
+      p.name.toLowerCase().includes(q) ||
+      p.full_name.toLowerCase().includes(q) ||
+      (p.description || '').toLowerCase().includes(q)
+    )
+  }, [projects, debouncedSearch])
+
+  // Show banner when all stars_gained_7d are 0 (data is calibrating)
+  const showBanner = !bannerDismissed && projects.length > 0 && projects.every(p => p.stars_gained_7d === 0)
+
+  const podium = filteredProjects.slice(0, 3)
+  const rows = filteredProjects.slice(3)
   const lastUpdated = new Date().toLocaleDateString('en-US', {
     weekday: 'short',
     month: 'short',
@@ -1104,7 +1535,116 @@ export default function App() {
         </p>
       </div>
 
-      {/* ─── Category Filter ────────────────────────────────────── */}
+      {/* ─── Calibration Banner ───────────────────────────────────── */}
+      {showBanner && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '12px',
+          padding: '12px 16px',
+          marginBottom: '16px',
+          border: '1px solid rgba(255,184,48,0.25)',
+          borderRadius: '10px',
+          background: 'rgba(255,184,48,0.04)',
+          animation: 'fadeUp 0.4s ease-out',
+        }}>
+          <div style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: '12px',
+            color: 'var(--text-muted)',
+            lineHeight: 1.6,
+          }}>
+            <span style={{ color: 'var(--gold)', fontWeight: 600 }}>Rankings are calibrating</span>
+            {' — full 7-day star data by '}
+            {new Date(Date.now() + 7 * 86400000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}.
+          </div>
+          <button
+            onClick={dismissBanner}
+            style={{
+              width: '24px',
+              height: '24px',
+              borderRadius: '6px',
+              border: '1px solid var(--border)',
+              background: 'transparent',
+              color: 'var(--text-dim)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+      )}
+
+      {/* ─── Search ──────────────────────────────────────────────── */}
+      <div style={{ marginBottom: '8px' }}>
+        <div style={{ position: 'relative' }}>
+          <svg
+            width="16" height="16" viewBox="0 0 24 24" fill="none"
+            stroke="var(--text-dim)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+            style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }}
+          >
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search projects..."
+            style={{
+              width: '100%',
+              padding: '10px 36px 10px 36px',
+              borderRadius: '10px',
+              border: '1px solid var(--border)',
+              background: 'var(--surface)',
+              color: 'var(--text-primary)',
+              fontFamily: 'var(--font-mono)',
+              fontSize: '13px',
+              outline: 'none',
+              transition: 'border-color 0.2s',
+              boxSizing: 'border-box',
+            }}
+            onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--border-bright)' }}
+            onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--border)' }}
+          />
+          {searchTerm && (
+            <button
+              onClick={() => setSearchTerm('')}
+              style={{
+                position: 'absolute',
+                right: '8px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                width: '24px',
+                height: '24px',
+                borderRadius: '6px',
+                border: 'none',
+                background: 'transparent',
+                color: 'var(--text-muted)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ─── Filter Bar ──────────────────────────────────────────── */}
       <div
         style={{
           position: 'sticky',
@@ -1126,6 +1666,7 @@ export default function App() {
             paddingBottom: '2px',
           }}
         >
+          {/* Category pills */}
           {CATEGORIES.map(cat => {
             const isActive = category === cat.value
             return (
@@ -1158,6 +1699,85 @@ export default function App() {
               </button>
             )
           })}
+
+          {/* Separator */}
+          <div style={{ width: '1px', background: 'var(--border)', flexShrink: 0, margin: '4px 4px' }} />
+
+          {/* Biggest Movers toggle */}
+          <button
+            onClick={() => {
+              const next = sortBy === 'movers' ? 'rank' : 'movers'
+              setSortBy(next)
+              track('sort-toggle', { sortBy: next })
+            }}
+            style={{
+              fontFamily: 'var(--font-body)',
+              fontSize: '13px',
+              fontWeight: sortBy === 'movers' ? 600 : 500,
+              color: sortBy === 'movers' ? 'var(--up)' : 'var(--text-muted)',
+              background: sortBy === 'movers' ? 'rgba(0,229,160,0.1)' : 'transparent',
+              border: `1px solid ${sortBy === 'movers' ? 'var(--up)' : 'var(--border)'}`,
+              borderRadius: '20px',
+              padding: '6px 16px',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              transition: 'all 0.2s',
+              touchAction: 'manipulation',
+              flexShrink: 0,
+            }}
+          >
+            Biggest Movers
+          </button>
+
+          {/* New This Week */}
+          <button
+            onClick={() => {
+              setShowNewOnly(!showNewOnly)
+              track('filter-new', { active: !showNewOnly })
+            }}
+            style={{
+              fontFamily: 'var(--font-body)',
+              fontSize: '13px',
+              fontWeight: showNewOnly ? 600 : 500,
+              color: showNewOnly ? 'var(--gold)' : 'var(--text-muted)',
+              background: showNewOnly ? 'rgba(255,184,48,0.1)' : 'transparent',
+              border: `1px solid ${showNewOnly ? 'var(--gold)' : 'var(--border)'}`,
+              borderRadius: '20px',
+              padding: '6px 16px',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              transition: 'all 0.2s',
+              touchAction: 'manipulation',
+              flexShrink: 0,
+            }}
+          >
+            New This Week
+          </button>
+
+          {/* Under 1k Stars */}
+          <button
+            onClick={() => {
+              setSmallOnly(!smallOnly)
+              track('filter-small', { active: !smallOnly })
+            }}
+            style={{
+              fontFamily: 'var(--font-body)',
+              fontSize: '13px',
+              fontWeight: smallOnly ? 600 : 500,
+              color: smallOnly ? 'var(--claude-amber)' : 'var(--text-muted)',
+              background: smallOnly ? 'rgba(255,140,66,0.1)' : 'transparent',
+              border: `1px solid ${smallOnly ? 'var(--claude-amber)' : 'var(--border)'}`,
+              borderRadius: '20px',
+              padding: '6px 16px',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              transition: 'all 0.2s',
+              touchAction: 'manipulation',
+              flexShrink: 0,
+            }}
+          >
+            Under 1k Stars
+          </button>
         </div>
       </div>
 
@@ -1166,7 +1786,7 @@ export default function App() {
         <div style={{ paddingTop: '24px' }}>
           <LoadingSkeleton />
         </div>
-      ) : projects.length === 0 ? (
+      ) : filteredProjects.length === 0 ? (
         <div style={{
           textAlign: 'center',
           padding: '80px 20px',
@@ -1174,7 +1794,9 @@ export default function App() {
           fontSize: '14px',
           color: 'var(--text-muted)',
         }}>
-          No projects found in this category yet.
+          {debouncedSearch
+            ? `No projects matching "${debouncedSearch}".`
+            : 'No projects found in this category yet.'}
         </div>
       ) : (
         <>
@@ -1198,6 +1820,8 @@ export default function App() {
                   copiedId={copiedId}
                   setCopiedId={setCopiedId}
                   highlighted={highlightedProject === project.full_name}
+                  sparklineData={sparklines[project.id]}
+                  onProjectClick={setDetailProject}
                 />
               ))}
             </div>
@@ -1216,6 +1840,8 @@ export default function App() {
                   copiedId={copiedId}
                   setCopiedId={setCopiedId}
                   highlighted={highlightedProject === project.full_name}
+                  sparklineData={sparklines[project.id]}
+                  onProjectClick={setDetailProject}
                 />
               ))}
             </div>
@@ -1246,6 +1872,17 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {/* ─── Project Detail Modal ────────────────────────────────── */}
+      {detailProject && (
+        <ProjectModal
+          project={detailProject}
+          sparklineData={sparklines[detailProject.id]}
+          copiedId={copiedId}
+          setCopiedId={setCopiedId}
+          onClose={() => setDetailProject(null)}
+        />
+      )}
     </div>
   )
 }
