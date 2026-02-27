@@ -1,0 +1,16 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/fetch-projects",
+      "schedule": "0 14 * * *"
+    }
+  ],
+  "rewrites": [
+    { "source": "/p/:slug", "destination": "/api/share?slug=:slug" }
+  ],
+  "functions": {
+    "api/cron/fetch-projects.js": { "maxDuration": 60 },
+    "api/og.js": { "maxDuration": 5 },
+    "api/share.js": { "maxDuration": 5 }
+  }
+}

@@ -1,0 +1,133 @@
+@import "tailwindcss";
+
+:root {
+  /* Colors */
+  --bg: #0A0F1E;
+  --bg-secondary: #0F1629;
+  --surface: #141C30;
+  --surface-hover: #1A2340;
+  --border: #1E2D4A;
+  --border-bright: #2A3F6A;
+  --text-primary: #F0F4FF;
+  --text-muted: #5A6A8A;
+  --text-dim: #3A4A6A;
+  --gold: #FFB830;
+  --gold-dim: #7A5010;
+  --up: #00E5A0;
+  --down: #FF4560;
+  --neutral: #4A5A7A;
+  --accent-blue: #4D9CFF;
+  --accent-blue-glow: rgba(77,156,255,0.12);
+  --claude-amber: #FF8C42;
+
+  /* Typography */
+  --font-display: 'Syne', sans-serif;
+  --font-mono: 'DM Mono', monospace;
+  --font-body: 'Outfit', sans-serif;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  background:
+    radial-gradient(ellipse 80% 50% at 20% -10%, rgba(77,156,255,0.06) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 110%, rgba(255,184,48,0.04) 0%, transparent 60%),
+    var(--bg);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Animations */
+@keyframes shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+@keyframes softPulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; color: var(--up); }
+}
+
+@keyframes copiedFlash {
+  0% { background: transparent; }
+  30% { background: rgba(0,229,160,0.08); }
+  100% { background: transparent; }
+}
+
+@keyframes rowEnter {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes popIn {
+  0% { transform: scale(0); opacity: 0; }
+  70% { transform: scale(1.15); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Skeleton loader */
+.skeleton {
+  background: linear-gradient(90deg, var(--surface) 25%, var(--surface-hover) 50%, var(--surface) 75%);
+  background-size: 800px 100%;
+  animation: shimmer 1.5s infinite linear;
+  border-radius: 4px;
+}
+
+/* Hide scrollbar for category pills */
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Desktop podium: #2 left, #1 center (taller), #3 right */
+@media (min-width: 900px) {
+  .podium-grid {
+    grid-template-columns: 1fr 1.15fr 1fr !important;
+    grid-template-rows: auto;
+    align-items: end;
+  }
+  .podium-grid > :first-child {
+    order: 1;
+  }
+  .podium-grid > :nth-child(2) {
+    order: 0;
+  }
+  .podium-grid > :nth-child(3) {
+    order: 2;
+  }
+}
+
+/* Hide description on very small screens */
+@media (max-width: 389px) {
+  .row-description {
+    display: none !important;
+  }
+}
+
+/* Hide category pill on mobile */
+@media (max-width: 639px) {
+  .row-category {
+    display: none !important;
+  }
+}
+
+/* Mobile touch targets */
+@media (max-width: 639px) {
+  .chart-row-link {
+    min-height: 72px !important;
+  }
+}
+
+/* Selection color */
+::selection {
+  background: rgba(77,156,255,0.3);
+  color: var(--text-primary);
+}
