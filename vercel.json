@@ -1,6 +1,7 @@
 {
-  "buildCommand": "",
+  "buildCommand": "echo 'API-only deploy — no frontend build'",
   "framework": null,
+  "installCommand": "npm install",
   "crons": [
     {
       "path": "/api/cron/fetch-projects",
