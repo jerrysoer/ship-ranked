@@ -992,17 +992,17 @@ export default function App() {
     if (!match) return
 
     track('og-view', { name: match.name, rank: match.rank })
-    setHighlightedProject(match.full_name)
 
-    // Wait a tick for DOM to render, then scroll
-    requestAnimationFrame(() => {
+    // Delay to let IntersectionObserver reveal rows (they start at opacity 0)
+    const scrollTimer = setTimeout(() => {
+      setHighlightedProject(match.full_name)
       const el = document.querySelector(`[data-project="${CSS.escape(match.full_name)}"]`)
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    })
+    }, 600)
 
-    // Clear highlight after 3s
-    const timer = setTimeout(() => setHighlightedProject(null), 3000)
-    return () => clearTimeout(timer)
+    // Clear highlight after 3.6s total (0.6s delay + 3s visible)
+    const clearTimer = setTimeout(() => setHighlightedProject(null), 3600)
+    return () => { clearTimeout(scrollTimer); clearTimeout(clearTimer) }
   }, [deepLinkTarget, loading, projects])
 
   // Scroll detection for header glass effect
