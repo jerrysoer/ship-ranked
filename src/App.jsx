@@ -1240,7 +1240,7 @@ export default function App() {
           lineHeight: 1.8,
         }}>
           <div>Powered by GitHub API + Supabase</div>
-          <div style={{ marginTop: '4px' }}>Part of the Ship ecosystem</div>
+          <div style={{ marginTop: '4px' }}>Built by jerrysoer and Claude</div>
           <div style={{ marginTop: '8px', color: 'var(--text-muted)' }}>
             Updated {lastUpdated}
           </div>
