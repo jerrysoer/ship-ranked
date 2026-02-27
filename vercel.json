@@ -1,4 +1,6 @@
 {
+  "buildCommand": "",
+  "framework": null,
   "crons": [
     {
       "path": "/api/cron/fetch-projects",
