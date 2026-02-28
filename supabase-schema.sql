@@ -40,3 +40,32 @@ CREATE POLICY "Public read" ON ranked_projects FOR SELECT TO anon USING (true);
 
 ALTER TABLE ranked_snapshots ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Public read snapshots" ON ranked_snapshots FOR SELECT TO anon USING (true);
+
+-- ─── Growth Layer columns (PRD2 Phase 1-3) ─────────────────────────────────
+
+ALTER TABLE ranked_projects ADD COLUMN review_status TEXT DEFAULT 'approved';
+-- 'approved' | 'flagged' | 'rejected'
+ALTER TABLE ranked_projects ADD COLUMN safety_flags JSONB DEFAULT '[]';
+ALTER TABLE ranked_projects ADD COLUMN readme_summary TEXT;
+ALTER TABLE ranked_projects ADD COLUMN claude_summary TEXT;
+ALTER TABLE ranked_projects ADD COLUMN builder_x_handle TEXT;
+ALTER TABLE ranked_projects ADD COLUMN starred_by_shipranked BOOLEAN DEFAULT false;
+ALTER TABLE ranked_projects ADD COLUMN account_age_days INTEGER;
+
+CREATE INDEX idx_ranked_projects_review ON ranked_projects(review_status);
+
+-- Weekly content drafts (X threads, Reddit posts)
+CREATE TABLE weekly_drafts (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  platform        TEXT NOT NULL,              -- 'x' | 'reddit'
+  subreddit       TEXT,                       -- NULL for X posts
+  suggested_title TEXT,                       -- Reddit post title
+  content         TEXT NOT NULL,
+  week_start      DATE NOT NULL,
+  posted          BOOLEAN DEFAULT false,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE weekly_drafts ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Service role only" ON weekly_drafts FOR ALL TO authenticated USING (true);
+CREATE POLICY "Anon read drafts" ON weekly_drafts FOR SELECT TO anon USING (true);

@@ -248,6 +248,10 @@ function getCategoryLabel(value) {
   return CATEGORIES.find(c => c.value === value)?.label || value
 }
 
+function getView() {
+  return new URLSearchParams(window.location.search).get('view')
+}
+
 function getInitialCategory() {
   const params = new URLSearchParams(window.location.search)
   return params.get('category') || 'all'
@@ -921,7 +925,7 @@ function ProjectModal({ project, sparklineData, copiedId, setCopiedId, onClose }
           lineHeight: 1.6,
           margin: '16px 0',
         }}>
-          {project.description}
+          {project.readme_summary || project.description}
         </p>
 
         {/* Badges */}
@@ -1303,9 +1307,491 @@ function HowRankingsWork() {
   )
 }
 
+// ─── Hall of Fame ────────────────────────────────────────────────────────────
+
+function HallOfFame() {
+  const [featured, setFeatured] = useState([])
+
+  useEffect(() => {
+    if (!supabase) return
+    async function fetchFeatured() {
+      const { data } = await supabase
+        .from('ranked_projects')
+        .select('*')
+        .eq('category', 'featured')
+        .order('stars_total', { ascending: false })
+      setFeatured(data || [])
+    }
+    fetchFeatured()
+  }, [])
+
+  if (featured.length === 0) return null
+
+  return (
+    <div style={{ marginTop: '48px' }}>
+      <div style={{ marginBottom: '16px' }}>
+        <h3 style={{
+          fontFamily: 'var(--font-display)',
+          fontWeight: 700,
+          fontSize: '18px',
+          margin: '0 0 4px',
+          color: 'var(--text-primary)',
+        }}>
+          Hall of Fame
+        </h3>
+        <p style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: '12px',
+          color: 'var(--text-dim)',
+          margin: 0,
+        }}>
+          Projects that shaped the ecosystem
+        </p>
+      </div>
+
+      <div style={{
+        display: 'flex',
+        gap: '12px',
+        overflowX: 'auto',
+        paddingBottom: '8px',
+        scrollbarWidth: 'thin',
+      }}>
+        {featured.map(project => (
+          <a
+            key={project.id}
+            href={project.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              minWidth: '220px',
+              maxWidth: '260px',
+              padding: '16px',
+              border: '1px solid var(--border)',
+              borderRadius: '10px',
+              background: 'var(--surface)',
+              textDecoration: 'none',
+              color: 'inherit',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px',
+              transition: 'border-color 0.2s',
+              flexShrink: 0,
+            }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-bright)' }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <img
+                src={project.avatar_url}
+                alt=""
+                width={28}
+                height={28}
+                style={{ borderRadius: '6px', opacity: 0.8 }}
+              />
+              <span style={{
+                fontFamily: 'var(--font-body)',
+                fontWeight: 600,
+                fontSize: '14px',
+                color: 'var(--text-primary)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}>
+                {project.name}
+              </span>
+            </div>
+            <p style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: '11px',
+              color: 'var(--text-muted)',
+              lineHeight: 1.5,
+              margin: 0,
+              overflow: 'hidden',
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+            }}>
+              {project.description}
+            </p>
+            <div style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: '11px',
+              color: 'var(--text-dim)',
+            }}>
+              {project.stars_total >= 1000
+                ? `${(project.stars_total / 1000).toFixed(1)}k`
+                : project.stars_total} ★
+            </div>
+          </a>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── Dashboard ──────────────────────────────────────────────────────────────
+
+// SHA-256 hash loaded from VITE_DASHBOARD_HASH env var (see .env)
+const DASHBOARD_PASSWORD_HASH = import.meta.env.VITE_DASHBOARD_HASH || ''
+
+function DashboardGate({ children }) {
+  const [authed, setAuthed] = useState(() => {
+    try { return sessionStorage.getItem('sr-dash') === '1' } catch { return false }
+  })
+  const [input, setInput] = useState('')
+
+  if (authed) return children
+
+  return (
+    <div style={{
+      maxWidth: '360px',
+      margin: '120px auto',
+      padding: '0 16px',
+      textAlign: 'center',
+    }}>
+      <h2 style={{
+        fontFamily: 'var(--font-display)',
+        fontWeight: 700,
+        fontSize: '20px',
+        marginBottom: '24px',
+      }}>
+        ShipRanked Dashboard
+      </h2>
+      <input
+        type="password"
+        value={input}
+        onChange={e => setInput(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter') {
+            crypto.subtle.digest('SHA-256', new TextEncoder().encode(input))
+              .then(buf => {
+                const hash = [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('')
+                if (hash === DASHBOARD_PASSWORD_HASH) {
+                  sessionStorage.setItem('sr-dash', '1')
+                  setAuthed(true)
+                } else {
+                  setInput('')
+                }
+              })
+          }
+        }}
+        placeholder="Password"
+        style={{
+          width: '100%',
+          padding: '12px 16px',
+          borderRadius: '10px',
+          border: '1px solid var(--border)',
+          background: 'var(--surface)',
+          color: 'var(--text-primary)',
+          fontFamily: 'var(--font-mono)',
+          fontSize: '14px',
+          outline: 'none',
+          boxSizing: 'border-box',
+        }}
+      />
+      <p style={{
+        fontFamily: 'var(--font-mono)',
+        fontSize: '11px',
+        color: 'var(--text-dim)',
+        marginTop: '12px',
+      }}>
+        Press Enter to continue
+      </p>
+    </div>
+  )
+}
+
+function Dashboard() {
+  const [drafts, setDrafts] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [copiedField, setCopiedField] = useState(null)
+
+  useEffect(() => {
+    if (!supabase) {
+      setLoading(false)
+      return
+    }
+    async function fetchDrafts() {
+      const { data } = await supabase
+        .from('weekly_drafts')
+        .select('*')
+        .order('week_start', { ascending: false })
+        .limit(20)
+      setDrafts(data || [])
+      setLoading(false)
+    }
+    fetchDrafts()
+  }, [])
+
+  const copyToClipboard = useCallback((text, id) => {
+    navigator.clipboard.writeText(text)
+    setCopiedField(id)
+    setTimeout(() => setCopiedField(null), 2000)
+  }, [])
+
+  const markPosted = useCallback(async (draftId) => {
+    if (!supabase) return
+    await supabase.from('weekly_drafts').update({ posted: true }).eq('id', draftId)
+    setDrafts(prev => prev.map(d => d.id === draftId ? { ...d, posted: true } : d))
+  }, [])
+
+  // Group drafts by week_start
+  const grouped = useMemo(() => {
+    const map = {}
+    for (const d of drafts) {
+      const week = d.week_start || 'unknown'
+      if (!map[week]) map[week] = []
+      map[week].push(d)
+    }
+    return Object.entries(map).sort((a, b) => b[0].localeCompare(a[0]))
+  }, [drafts])
+
+  const CopyButton = ({ text, id, label }) => (
+    <button
+      onClick={() => copyToClipboard(text, id)}
+      style={{
+        padding: '6px 12px',
+        borderRadius: '6px',
+        border: '1px solid var(--border)',
+        background: copiedField === id ? 'rgba(34,197,94,0.15)' : 'var(--surface)',
+        color: copiedField === id ? 'var(--up)' : 'var(--text-muted)',
+        cursor: 'pointer',
+        fontFamily: 'var(--font-mono)',
+        fontSize: '11px',
+        transition: 'all 0.2s',
+      }}
+    >
+      {copiedField === id ? 'Copied!' : label || 'Copy'}
+    </button>
+  )
+
+  return (
+    <div style={{ maxWidth: '860px', margin: '0 auto', padding: '32px 16px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '32px' }}>
+        <div>
+          <h1 style={{
+            fontFamily: 'var(--font-display)',
+            fontWeight: 800,
+            fontSize: '24px',
+            margin: '0 0 4px',
+          }}>
+            Draft Review
+          </h1>
+          <p style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: '12px',
+            color: 'var(--text-dim)',
+            margin: 0,
+          }}>
+            Weekly content drafts for Reddit & X
+          </p>
+        </div>
+        <a
+          href="?"
+          style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: '12px',
+            color: 'var(--text-muted)',
+            textDecoration: 'none',
+          }}
+        >
+          ← Back to rankings
+        </a>
+      </div>
+
+      {loading && (
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', color: 'var(--text-dim)', textAlign: 'center', padding: '48px 0' }}>
+          Loading drafts...
+        </div>
+      )}
+
+      {!loading && drafts.length === 0 && (
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', color: 'var(--text-dim)', textAlign: 'center', padding: '48px 0' }}>
+          No drafts yet. Drafts are generated on Mondays.
+        </div>
+      )}
+
+      {grouped.map(([week, weekDrafts]) => (
+        <div key={week} style={{ marginBottom: '32px' }}>
+          <h3 style={{
+            fontFamily: 'var(--font-display)',
+            fontWeight: 600,
+            fontSize: '16px',
+            marginBottom: '16px',
+            color: 'var(--text-primary)',
+          }}>
+            Week of {week}
+          </h3>
+
+          {weekDrafts.map(draft => (
+            <div
+              key={draft.id}
+              style={{
+                border: '1px solid var(--border)',
+                borderRadius: '10px',
+                padding: '16px',
+                marginBottom: '12px',
+                background: draft.posted ? 'rgba(34,197,94,0.03)' : 'var(--surface)',
+                opacity: draft.posted ? 0.7 : 1,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                <span style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  padding: '2px 8px',
+                  borderRadius: '4px',
+                  background: draft.platform === 'reddit' ? 'rgba(255,69,0,0.12)' : 'rgba(29,155,240,0.12)',
+                  color: draft.platform === 'reddit' ? '#ff4500' : '#1d9bf0',
+                  textTransform: 'uppercase',
+                }}>
+                  {draft.platform}
+                </span>
+                {draft.subreddit && (
+                  <span style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '11px',
+                    color: 'var(--text-dim)',
+                  }}>
+                    r/{draft.subreddit}
+                  </span>
+                )}
+                {draft.posted && (
+                  <span style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '11px',
+                    color: 'var(--up)',
+                    fontWeight: 600,
+                  }}>
+                    POSTED
+                  </span>
+                )}
+                <div style={{ flex: 1 }} />
+                {!draft.posted && (
+                  <button
+                    onClick={() => markPosted(draft.id)}
+                    style={{
+                      padding: '4px 10px',
+                      borderRadius: '6px',
+                      border: '1px solid var(--border)',
+                      background: 'transparent',
+                      color: 'var(--text-dim)',
+                      cursor: 'pointer',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '11px',
+                    }}
+                  >
+                    Mark posted
+                  </button>
+                )}
+              </div>
+
+              {draft.suggested_title && (
+                <div style={{
+                  fontFamily: 'var(--font-body)',
+                  fontWeight: 600,
+                  fontSize: '14px',
+                  marginBottom: '8px',
+                }}>
+                  {draft.suggested_title}
+                </div>
+              )}
+
+              {draft.platform === 'x' ? (
+                // X thread: parse JSON and show each tweet separately
+                (() => {
+                  try {
+                    const tweets = JSON.parse(draft.content)
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {Object.entries(tweets).map(([key, text]) => (
+                          <div key={key} style={{
+                            padding: '12px',
+                            border: '1px solid var(--border)',
+                            borderRadius: '8px',
+                            background: 'rgba(255,255,255,0.02)',
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                              <span style={{
+                                fontFamily: 'var(--font-mono)',
+                                fontSize: '10px',
+                                color: 'var(--text-dim)',
+                                textTransform: 'uppercase',
+                              }}>
+                                {key}
+                              </span>
+                              <CopyButton text={text} id={`${draft.id}-${key}`} label="Copy tweet" />
+                            </div>
+                            <pre style={{
+                              fontFamily: 'var(--font-mono)',
+                              fontSize: '12px',
+                              color: 'var(--text-muted)',
+                              lineHeight: 1.6,
+                              margin: 0,
+                              whiteSpace: 'pre-wrap',
+                              wordBreak: 'break-word',
+                            }}>
+                              {text}
+                            </pre>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  } catch {
+                    // Fallback: show raw content
+                    return (
+                      <pre style={{
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: '12px',
+                        color: 'var(--text-muted)',
+                        lineHeight: 1.6,
+                        margin: 0,
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word',
+                      }}>
+                        {draft.content}
+                      </pre>
+                    )
+                  }
+                })()
+              ) : (
+                // Reddit: show full content with copy button
+                <div>
+                  <pre style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '12px',
+                    color: 'var(--text-muted)',
+                    lineHeight: 1.6,
+                    margin: '0 0 12px',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                  }}>
+                    {draft.content}
+                  </pre>
+                  <CopyButton text={draft.content} id={draft.id} label="Copy post" />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ─── App ─────────────────────────────────────────────────────────────────────
 
 export default function App() {
+  // Dashboard view routing
+  if (getView() === 'dashboard') {
+    return (
+      <DashboardGate>
+        <Dashboard />
+      </DashboardGate>
+    )
+  }
+
   const [projects, setProjects] = useState([])
   const [loading, setLoading] = useState(true)
   const [category, setCategory] = useState(getInitialCategory)
@@ -1349,6 +1835,8 @@ export default function App() {
       }
 
       let query = supabase.from('ranked_projects').select('*')
+        .eq('review_status', 'approved')
+        .neq('category', 'featured')
 
       if (sortBy === 'movers') {
         query = query.order('rank_delta', { ascending: false })
@@ -1851,6 +2339,9 @@ export default function App() {
 
       {/* ─── How Rankings Work ──────────────────────────────────── */}
       <HowRankingsWork />
+
+      {/* ─── Hall of Fame ────────────────────────────────────────── */}
+      <HallOfFame />
 
       {/* ─── Footer ─────────────────────────────────────────────── */}
       <footer style={{
