@@ -486,17 +486,24 @@ function PodiumCard({ project, position, copiedId, setCopiedId, highlighted, spa
         e.currentTarget.style.borderColor = isFirst ? 'rgba(255,184,48,0.3)' : 'var(--border)'
       }}
     >
-      {/* Rank number */}
+      {/* Rank number + movement */}
       <div style={{
-        fontFamily: 'var(--font-display)',
-        fontWeight: 700,
-        fontSize: isFirst ? '52px' : '40px',
-        lineHeight: 1,
-        color: isFirst ? 'var(--gold)' : 'var(--text-dim)',
-        textShadow: isFirst ? '0 0 40px rgba(255,184,48,0.4)' : 'none',
+        display: 'flex',
+        alignItems: 'baseline',
+        gap: '10px',
         marginBottom: '12px',
       }}>
-        {project.rank}
+        <span style={{
+          fontFamily: 'var(--font-display)',
+          fontWeight: 700,
+          fontSize: isFirst ? '52px' : '40px',
+          lineHeight: 1,
+          color: isFirst ? 'var(--gold)' : 'var(--text-dim)',
+          textShadow: isFirst ? '0 0 40px rgba(255,184,48,0.4)' : 'none',
+        }}>
+          {project.rank}
+        </span>
+        <DeltaBadge project={project} animate delay={800 + position * 100} />
       </div>
 
       {/* Avatar + name */}
@@ -572,7 +579,6 @@ function PodiumCard({ project, position, copiedId, setCopiedId, highlighted, spa
           }}>
             +{starsAnimated}
           </span>
-          <DeltaBadge project={project} animate delay={800 + position * 100} />
         </div>
         <ShareButton project={project} copiedId={copiedId} setCopiedId={setCopiedId} size="small" />
       </div>
@@ -1871,7 +1877,7 @@ function AnalyticsTab() {
   const [error, setError] = useState(false)
 
   useEffect(() => {
-    fetch('/api/analytics')
+    fetch('https://ship-ranked.vercel.app/api/analytics')
       .then(res => {
         if (!res.ok) throw new Error('Failed')
         return res.json()
