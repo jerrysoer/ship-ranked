@@ -10,13 +10,20 @@
     }
   ],
   "rewrites": [
-    { "source": "/p/:slug", "destination": "/api/share?slug=:slug" }
+    { "source": "/p/:slug", "destination": "/api/share?slug=:slug" },
+    { "source": "/recap/:week", "destination": "/api/share?recap=:week" },
+    { "source": "/builder/:handle", "destination": "/api/share?builder=:handle" }
   ],
   "functions": {
     "api/cron/fetch-projects.js": { "maxDuration": 60 },
     "api/badge.js": { "maxDuration": 5 },
     "api/og.js": { "maxDuration": 5 },
     "api/share.js": { "maxDuration": 5 },
-    "api/analytics.js": { "maxDuration": 10 }
+    "api/analytics.js": { "maxDuration": 10 },
+    "api/rss.js": { "maxDuration": 5 },
+    "api/claim.js": { "maxDuration": 10 },
+    "api/profile.js": { "maxDuration": 5 },
+    "api/recap.js": { "maxDuration": 10 },
+    "api/recap-og.js": { "maxDuration": 5 }
   }
 }

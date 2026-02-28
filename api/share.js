@@ -90,8 +90,24 @@ function buildHtml({ title, description, ogImageUrl, redirectUrl }) {
 </html>`
 }
 
+function parseWeekLabel(weekStr) {
+  try {
+    const [year, weekNum] = weekStr.split('-W').map(Number)
+    const jan4 = new Date(year, 0, 4)
+    const dayOfWeek = jan4.getDay() || 7
+    const monday = new Date(jan4)
+    monday.setDate(jan4.getDate() - dayOfWeek + 1 + (weekNum - 1) * 7)
+    const sunday = new Date(monday)
+    sunday.setDate(monday.getDate() + 6)
+    const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    return `${fmt(monday)} – ${fmt(sunday)}`
+  } catch {
+    return weekStr
+  }
+}
+
 export default async function handler(req, res) {
-  const { slug } = req.query
+  const { slug, recap, builder } = req.query
   const host = req.headers.host || 'localhost:3000'
   const protocol = host.includes('localhost') ? 'http' : 'https'
   const baseUrl = `${protocol}://${host}`
@@ -100,6 +116,31 @@ export default async function handler(req, res) {
   let description = 'See which Claude Code projects are gaining the most stars this week.'
   let ogImageUrl = `${baseUrl}/api/og`
   let redirectUrl = 'https://jerrysoer.github.io/ship-ranked/'
+
+  // Recap share page
+  if (recap) {
+    const weekLabel = parseWeekLabel(recap)
+    title = `ShipRanked Weekly Recap — Week of ${weekLabel}`
+    description = 'See which Claude Code projects dominated this week.'
+    ogImageUrl = `${baseUrl}/api/recap-og?week=${encodeURIComponent(recap)}`
+    redirectUrl = `https://jerrysoer.github.io/ship-ranked/?view=recap&week=${encodeURIComponent(recap)}`
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8')
+    res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400')
+    return res.status(200).send(buildHtml({ title, description, ogImageUrl, redirectUrl }))
+  }
+
+  // Builder share page
+  if (builder) {
+    title = `@${escapeHtml(builder)} — ShipRanked Builder Profile`
+    description = `See all Claude Code projects by @${escapeHtml(builder)}.`
+    ogImageUrl = `${baseUrl}/api/og?builder=${encodeURIComponent(builder)}`
+    redirectUrl = `https://jerrysoer.github.io/ship-ranked/?view=builder&handle=${encodeURIComponent(builder)}`
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8')
+    res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400')
+    return res.status(200).send(buildHtml({ title, description, ogImageUrl, redirectUrl }))
+  }
 
   if (isValidSlug(slug)) {
     const [owner, ...repoParts] = slug.split('--')

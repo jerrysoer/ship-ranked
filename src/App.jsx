@@ -280,7 +280,7 @@ function stripHtml(str) {
 // ─── Copy Share ──────────────────────────────────────────────────────────────
 
 async function copyShare(project, setCopiedId) {
-  const shareUrl = `https://ship-ranked.vercel.app/p/${project.full_name.replace('/', '--')}`
+  const shareUrl = `${API_BASE}/p/${project.full_name.replace('/', '--')}`
   const text = `My project ranked #${project.rank} on ShipRanked this week\n\n` +
     `★ ${project.stars_total.toLocaleString()} total stars  ↑ +${project.stars_gained_7d} gained this week\n` +
     `Built with Claude Code\n\n` +
@@ -535,7 +535,15 @@ function PodiumCard({ project, position, copiedId, setCopiedId, highlighted, spa
             fontSize: '11px',
             color: 'var(--text-muted)',
           }}>
-            {project.full_name}
+            <a
+              href={`?view=builder&handle=${encodeURIComponent(project.builder_handle || project.full_name.split('/')[0])}`}
+              onClick={(e) => { e.stopPropagation() }}
+              style={{ color: 'var(--text-muted)', textDecoration: 'none' }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent-blue)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)' }}
+            >
+              {project.full_name}
+            </a>
           </div>
         </div>
       </div>
@@ -670,15 +678,34 @@ function ChartRow({ project, index, copiedId, setCopiedId, highlighted, sparklin
 
       {/* Name + Description */}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{
-          fontFamily: 'var(--font-body)',
-          fontWeight: 600,
-          fontSize: '14px',
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-        }}>
-          {project.name}
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+          <span style={{
+            fontFamily: 'var(--font-body)',
+            fontWeight: 600,
+            fontSize: '14px',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}>
+            {project.name}
+          </span>
+          {project.builder_handle && (
+            <a
+              href={`?view=builder&handle=${encodeURIComponent(project.builder_handle)}`}
+              onClick={(e) => { e.stopPropagation() }}
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: '11px',
+                color: 'var(--text-dim)',
+                textDecoration: 'none',
+                flexShrink: 0,
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent-blue)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-dim)' }}
+            >
+              @{project.builder_handle}
+            </a>
+          )}
         </div>
         <div
           className="row-description"
@@ -821,6 +848,7 @@ function LoadingSkeleton() {
 function ProjectModal({ project, sparklineData, copiedId, setCopiedId, onClose }) {
   const [badgeCopied, setBadgeCopied] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
+  const [badgeStyle, setBadgeStyle] = useState('default')
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose() }
@@ -836,13 +864,13 @@ function ProjectModal({ project, sparklineData, copiedId, setCopiedId, onClose }
   if (!project) return null
 
   const slug = project.full_name.replace('/', '--')
-  const badgeUrl = `https://ship-ranked.vercel.app/api/badge?project=${slug}`
-  const shareUrl = `https://ship-ranked.vercel.app/p/${slug}`
-  const badgeMd = `[![ShipRanked](${badgeUrl})](${shareUrl})`
+  const shareUrl = `${API_BASE}/p/${slug}`
+  const currentBadgeMd = badgeMdForStyle(slug, badgeStyle)
+  const currentBadgeUrl = badgeUrlForStyle(slug, badgeStyle)
 
   const copyBadge = async () => {
     try {
-      await navigator.clipboard.writeText(badgeMd)
+      await navigator.clipboard.writeText(currentBadgeMd)
       setBadgeCopied(true)
       setTimeout(() => setBadgeCopied(false), 2000)
     } catch { /* noop */ }
@@ -924,7 +952,19 @@ function ProjectModal({ project, sparklineData, copiedId, setCopiedId, onClose }
               {project.name}
             </div>
             <div style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text-muted)' }}>
-              {project.full_name} {project.builder_handle && `· @${project.builder_handle}`}
+              {project.full_name}
+              {project.builder_handle && (
+                <>
+                  {' · '}
+                  <a
+                    href={`?view=builder&handle=${encodeURIComponent(project.builder_handle)}`}
+                    onClick={(e) => { e.stopPropagation() }}
+                    style={{ color: 'var(--accent-blue)', textDecoration: 'none' }}
+                  >
+                    @{project.builder_handle}
+                  </a>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -1076,7 +1116,7 @@ function ProjectModal({ project, sparklineData, copiedId, setCopiedId, onClose }
           </div>
         </div>
 
-        {/* Badge embed */}
+        {/* Badge embed with style picker */}
         <div style={{
           marginTop: '16px',
           padding: '12px 16px',
@@ -1105,9 +1145,44 @@ function ProjectModal({ project, sparklineData, copiedId, setCopiedId, onClose }
                 padding: '2px 6px',
               }}
             >
-              {badgeCopied ? 'Copied!' : 'Copy'}
+              {badgeCopied ? 'Copied!' : 'Copy Markdown'}
             </button>
           </div>
+
+          {/* Style pills */}
+          <div style={{ display: 'flex', gap: '6px', marginBottom: '10px', flexWrap: 'wrap' }}>
+            {BADGE_STYLES.map(s => (
+              <button
+                key={s.value}
+                onClick={() => { setBadgeStyle(s.value); setBadgeCopied(false) }}
+                style={{
+                  fontFamily: 'var(--font-body)',
+                  fontSize: '11px',
+                  fontWeight: badgeStyle === s.value ? 600 : 400,
+                  color: badgeStyle === s.value ? 'var(--accent-blue)' : 'var(--text-muted)',
+                  background: badgeStyle === s.value ? 'var(--accent-blue-glow)' : 'transparent',
+                  border: `1px solid ${badgeStyle === s.value ? 'var(--accent-blue)' : 'var(--border)'}`,
+                  borderRadius: '12px',
+                  padding: '3px 10px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Live preview */}
+          <div style={{ marginBottom: '8px', minHeight: '24px' }}>
+            <img
+              src={currentBadgeUrl}
+              alt="Badge preview"
+              style={{ height: '20px' }}
+              key={badgeStyle}
+            />
+          </div>
+
           <code style={{
             fontFamily: 'var(--font-mono)',
             fontSize: '11px',
@@ -1115,9 +1190,12 @@ function ProjectModal({ project, sparklineData, copiedId, setCopiedId, onClose }
             wordBreak: 'break-all',
             lineHeight: 1.6,
           }}>
-            {badgeMd}
+            {currentBadgeMd}
           </code>
         </div>
+
+        {/* Claim section */}
+        <ClaimSection project={project} />
       </div>
     </div>
   )
@@ -2195,17 +2273,747 @@ function Dashboard() {
   )
 }
 
+// ─── API Base ────────────────────────────────────────────────────────────────
+
+const API_BASE = 'https://ship-ranked.vercel.app'
+const SPA_BASE = 'https://jerrysoer.github.io/ship-ranked/'
+
+// ─── Badge Style Picker ─────────────────────────────────────────────────────
+
+const BADGE_STYLES = [
+  { value: 'default', label: 'Default' },
+  { value: 'compact', label: 'Compact' },
+  { value: 'trending', label: 'Trending' },
+  { value: 'dark', label: 'Dark' },
+  { value: 'light', label: 'Light' },
+]
+
+function badgeUrlForStyle(slug, style) {
+  const base = `${API_BASE}/api/badge?project=${slug}`
+  return style === 'default' ? base : `${base}&style=${style}`
+}
+
+function badgeMdForStyle(slug, style) {
+  const badgeUrl = badgeUrlForStyle(slug, style)
+  const shareUrl = `${API_BASE}/p/${slug}`
+  return `[![ShipRanked](${badgeUrl})](${shareUrl})`
+}
+
+// ─── Claim Section ──────────────────────────────────────────────────────────
+
+function ClaimSection({ project }) {
+  const [claimStatus, setClaimStatus] = useState(null) // null | 'loading' | 'unclaimed' | 'verified' | 'editing'
+  const [profile, setProfile] = useState(null)
+  const [handle, setHandle] = useState('')
+  const [claimResult, setClaimResult] = useState(null) // { ok, reason, instructions, claim_token }
+  const [editFields, setEditFields] = useState({ tagline: '', website_url: '', x_handle: '', discord_url: '' })
+  const [saving, setSaving] = useState(false)
+
+  // Check claim status on mount
+  useEffect(() => {
+    setClaimStatus('loading')
+    fetch(`${API_BASE}/api/claim?project_id=${encodeURIComponent(project.id)}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.claimed) {
+          setProfile(data.profile)
+          setEditFields({
+            tagline: data.profile?.tagline || '',
+            website_url: data.profile?.website_url || '',
+            x_handle: data.profile?.x_handle || '',
+            discord_url: data.profile?.discord_url || '',
+          })
+          setClaimStatus('verified')
+        } else {
+          setClaimStatus('unclaimed')
+        }
+      })
+      .catch(() => setClaimStatus('unclaimed'))
+  }, [project.id])
+
+  const submitClaim = async () => {
+    setClaimResult(null)
+    try {
+      const res = await fetch(`${API_BASE}/api/claim`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: project.id, github_handle: handle }),
+      })
+      const data = await res.json()
+      setClaimResult(data)
+      if (data.ok) {
+        try { localStorage.setItem(`sr-claim-${project.id}`, data.claim_token) } catch {}
+        setClaimStatus('verified')
+        setProfile({ github_handle: handle, verified: true })
+      }
+    } catch {
+      setClaimResult({ ok: false, reason: 'error', instructions: 'Something went wrong. Please try again.' })
+    }
+  }
+
+  const saveProfile = async () => {
+    setSaving(true)
+    const token = claimResult?.claim_token || (() => {
+      try { return localStorage.getItem(`sr-claim-${project.id}`) } catch { return null }
+    })()
+    if (!token) { setSaving(false); return }
+
+    try {
+      const res = await fetch(`${API_BASE}/api/profile`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ github_handle: profile.github_handle, claim_token: token, ...editFields }),
+      })
+      const data = await res.json()
+      if (data.ok) setProfile(data.profile)
+    } catch { /* noop */ }
+    setSaving(false)
+  }
+
+  if (claimStatus === 'loading' || claimStatus === null) return null
+
+  const sectionStyle = {
+    marginTop: '16px',
+    padding: '12px 16px',
+    background: 'var(--bg)',
+    borderRadius: '10px',
+    border: '1px solid var(--border)',
+  }
+
+  const inputStyle = {
+    width: '100%',
+    padding: '8px 12px',
+    borderRadius: '8px',
+    border: '1px solid var(--border)',
+    background: 'var(--surface)',
+    color: 'var(--text-primary)',
+    fontFamily: 'var(--font-mono)',
+    fontSize: '12px',
+    outline: 'none',
+    boxSizing: 'border-box',
+  }
+
+  const labelStyle = {
+    fontFamily: 'var(--font-mono)',
+    fontSize: '11px',
+    color: 'var(--text-dim)',
+    marginBottom: '4px',
+    display: 'block',
+  }
+
+  // Verified — show profile with edit
+  if (claimStatus === 'verified') {
+    const hasToken = claimResult?.claim_token || (() => {
+      try { return localStorage.getItem(`sr-claim-${project.id}`) } catch { return null }
+    })()
+
+    return (
+      <div style={sectionStyle}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          marginBottom: '10px',
+        }}>
+          <span style={{ color: 'var(--up)', fontSize: '14px' }}>✓</span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--up)', fontWeight: 600 }}>
+            CLAIMED
+          </span>
+        </div>
+
+        {profile?.tagline && (
+          <p style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text-muted)', margin: '0 0 10px' }}>
+            "{profile.tagline}"
+          </p>
+        )}
+
+        {hasToken && (
+          <>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '8px' }}>
+              <div>
+                <label style={labelStyle}>Tagline</label>
+                <input style={inputStyle} value={editFields.tagline} onChange={e => setEditFields(f => ({ ...f, tagline: e.target.value }))} placeholder="Your tagline..." />
+              </div>
+              <div>
+                <label style={labelStyle}>Website</label>
+                <input style={inputStyle} value={editFields.website_url} onChange={e => setEditFields(f => ({ ...f, website_url: e.target.value }))} placeholder="https://..." />
+              </div>
+              <div>
+                <label style={labelStyle}>X Handle</label>
+                <input style={inputStyle} value={editFields.x_handle} onChange={e => setEditFields(f => ({ ...f, x_handle: e.target.value }))} placeholder="@handle" />
+              </div>
+              <div>
+                <label style={labelStyle}>Discord</label>
+                <input style={inputStyle} value={editFields.discord_url} onChange={e => setEditFields(f => ({ ...f, discord_url: e.target.value }))} placeholder="https://discord.gg/..." />
+              </div>
+            </div>
+            <button
+              onClick={saveProfile}
+              disabled={saving}
+              style={{
+                marginTop: '10px',
+                padding: '8px 16px',
+                borderRadius: '8px',
+                border: '1px solid var(--border)',
+                background: 'var(--accent-blue)',
+                color: '#fff',
+                fontFamily: 'var(--font-body)',
+                fontWeight: 500,
+                fontSize: '12px',
+                cursor: saving ? 'wait' : 'pointer',
+                opacity: saving ? 0.7 : 1,
+              }}
+            >
+              {saving ? 'Saving...' : 'Save Profile'}
+            </button>
+          </>
+        )}
+      </div>
+    )
+  }
+
+  // Unclaimed — show claim form
+  return (
+    <div style={sectionStyle}>
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-dim)', marginBottom: '8px' }}>
+        CLAIM THIS PROJECT
+      </div>
+      <div style={{ display: 'flex', gap: '8px' }}>
+        <input
+          style={{ ...inputStyle, flex: 1 }}
+          value={handle}
+          onChange={e => setHandle(e.target.value)}
+          placeholder="Your GitHub username"
+          onKeyDown={e => { if (e.key === 'Enter' && handle) submitClaim() }}
+        />
+        <button
+          onClick={submitClaim}
+          disabled={!handle}
+          style={{
+            padding: '8px 16px',
+            borderRadius: '8px',
+            border: '1px solid var(--accent-blue)',
+            background: 'var(--accent-blue)',
+            color: '#fff',
+            fontFamily: 'var(--font-body)',
+            fontWeight: 500,
+            fontSize: '12px',
+            cursor: handle ? 'pointer' : 'not-allowed',
+            opacity: handle ? 1 : 0.5,
+            flexShrink: 0,
+          }}
+        >
+          Claim
+        </button>
+      </div>
+      {claimResult && !claimResult.ok && (
+        <p style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: '11px',
+          color: claimResult.reason === 'no-shipranked-md' ? 'var(--gold)' : 'var(--down)',
+          marginTop: '8px',
+          lineHeight: 1.6,
+        }}>
+          {claimResult.instructions}
+        </p>
+      )}
+    </div>
+  )
+}
+
+// ─── Weekly Recap ────────────────────────────────────────────────────────────
+
+function WeeklyRecap() {
+  const params = new URLSearchParams(window.location.search)
+  const [week, setWeek] = useState(params.get('week') || '')
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [recapCopied, setRecapCopied] = useState(false)
+
+  useEffect(() => {
+    setLoading(true)
+    const url = week
+      ? `${API_BASE}/api/recap?week=${encodeURIComponent(week)}`
+      : `${API_BASE}/api/recap`
+    fetch(url)
+      .then(r => r.json())
+      .then(d => { setData(d); setWeek(d.week); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [week])
+
+  const navigateWeek = (direction) => {
+    if (!data?.week) return
+    const [year, wNum] = data.week.split('-W').map(Number)
+    const newWeek = direction === 'next' ? wNum + 1 : wNum - 1
+    // Simplified week navigation (doesn't handle year boundaries perfectly)
+    const newYear = newWeek < 1 ? year - 1 : newWeek > 52 ? year + 1 : year
+    const adjustedWeek = newWeek < 1 ? 52 : newWeek > 52 ? 1 : newWeek
+    const newWeekStr = `${newYear}-W${String(adjustedWeek).padStart(2, '0')}`
+    setWeek(newWeekStr)
+    const url = new URL(window.location)
+    url.searchParams.set('week', newWeekStr)
+    window.history.replaceState({}, '', url)
+  }
+
+  const copyRecapUrl = async () => {
+    const shareUrl = `${API_BASE}/recap/${data?.week || week}`
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+      setRecapCopied(true)
+      setTimeout(() => setRecapCopied(false), 2000)
+    } catch {}
+  }
+
+  return (
+    <div style={{ maxWidth: '860px', margin: '0 auto', padding: '0 16px' }}>
+      {/* Header */}
+      <div style={{ padding: '16px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '18px', letterSpacing: '0.05em' }}>
+          SHIPRANKED
+        </div>
+        <a href="?" style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text-muted)', textDecoration: 'none' }}>
+          ← Back to rankings
+        </a>
+      </div>
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '80px 0' }}>
+          <div className="skeleton" style={{ width: '200px', height: '32px', margin: '0 auto 16px' }} />
+          <div className="skeleton" style={{ width: '300px', height: '20px', margin: '0 auto' }} />
+        </div>
+      ) : !data ? (
+        <div style={{ textAlign: 'center', padding: '80px 0', fontFamily: 'var(--font-mono)', fontSize: '14px', color: 'var(--text-muted)' }}>
+          No recap data available for this week.
+        </div>
+      ) : (
+        <>
+          {/* Week title */}
+          <div style={{ textAlign: 'center', padding: '32px 0' }}>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--gold)', letterSpacing: '2px', marginBottom: '8px' }}>
+              WEEKLY RECAP
+            </div>
+            <h1 style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 'clamp(24px, 4vw, 36px)', margin: '0 0 8px' }}>
+              Week of {data.weekLabel}
+            </h1>
+          </div>
+
+          {/* Winner spotlight */}
+          {data.top5?.[0] && (() => {
+            const winner = data.top5[0]
+            return (
+              <div style={{
+                padding: '24px',
+                borderRadius: '16px',
+                border: '1px solid rgba(255,184,48,0.3)',
+                background: 'radial-gradient(ellipse at top, rgba(255,184,48,0.08) 0%, var(--surface) 70%)',
+                textAlign: 'center',
+                marginBottom: '32px',
+              }}>
+                <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '64px', color: 'var(--gold)', lineHeight: 1 }}>
+                  #1
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', margin: '12px 0' }}>
+                  {winner.avatar_url && (
+                    <img src={winner.avatar_url} alt="" style={{ width: 32, height: 32, borderRadius: '50%', border: '1px solid var(--border)' }} />
+                  )}
+                  <span style={{ fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: '24px' }}>{winner.name}</span>
+                </div>
+                <p style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', color: 'var(--text-muted)', margin: '0 0 12px', maxWidth: '400px', marginInline: 'auto' }}>
+                  {winner.description}
+                </p>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '14px', color: 'var(--up)' }}>
+                  ★ {winner.stars_total?.toLocaleString()} · +{winner.stars_gained_7d?.toLocaleString()} this week
+                </div>
+              </div>
+            )
+          })()}
+
+          {/* Top 5 list */}
+          <div style={{ marginBottom: '32px' }}>
+            <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '18px', marginBottom: '12px' }}>Top 5</h2>
+            {data.top5?.map((p, i) => (
+              <div key={p.full_name || i} style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: '12px 16px',
+                borderBottom: '1px solid var(--border)',
+              }}>
+                <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '20px', color: i === 0 ? 'var(--gold)' : 'var(--text-dim)', minWidth: '28px' }}>
+                  {p.rank}
+                </span>
+                {p.avatar_url && <img src={p.avatar_url} alt="" style={{ width: 24, height: 24, borderRadius: '50%', border: '1px solid var(--border)' }} />}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: 'var(--font-body)', fontWeight: 600, fontSize: '14px' }}>{p.name}</div>
+                </div>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text-muted)' }}>
+                  ★ {formatNumber(p.stars_total || 0)}
+                </span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', fontWeight: 500, color: 'var(--up)' }}>
+                  +{p.stars_gained_7d || 0}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {/* Biggest Movers */}
+          {data.biggestMovers?.length > 0 && (
+            <div style={{ marginBottom: '32px' }}>
+              <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '18px', marginBottom: '12px' }}>Biggest Movers</h2>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+                {data.biggestMovers.map((p, i) => (
+                  <div key={p.full_name || i} style={{
+                    padding: '16px',
+                    borderRadius: '12px',
+                    border: '1px solid var(--border)',
+                    background: 'var(--surface)',
+                  }}>
+                    <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '28px', color: 'var(--up)' }}>
+                      ↑{p.rank_delta}
+                    </div>
+                    <div style={{ fontFamily: 'var(--font-body)', fontWeight: 600, fontSize: '14px', marginTop: '4px' }}>{p.name}</div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                      Now #{p.rank}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* New This Week */}
+          {data.newEntries?.length > 0 && (
+            <div style={{ marginBottom: '32px' }}>
+              <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '18px', marginBottom: '12px' }}>New This Week</h2>
+              {data.newEntries.map((p, i) => (
+                <div key={p.full_name || i} style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  padding: '10px 16px',
+                  borderBottom: '1px solid var(--border)',
+                }}>
+                  <span style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '11px',
+                    fontWeight: 500,
+                    color: 'var(--gold)',
+                    background: 'rgba(255,184,48,0.12)',
+                    padding: '2px 8px',
+                    borderRadius: '4px',
+                  }}>NEW</span>
+                  <span style={{ fontFamily: 'var(--font-body)', fontWeight: 600, fontSize: '14px', flex: 1 }}>{p.name}</span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text-muted)' }}>#{p.rank}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Stats bar */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, 1fr)',
+            gap: '12px',
+            padding: '16px',
+            borderRadius: '12px',
+            border: '1px solid var(--border)',
+            background: 'var(--surface)',
+            marginBottom: '32px',
+          }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '24px' }}>{data.stats?.totalProjects || 0}</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-dim)' }}>PROJECTS</div>
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '24px', color: 'var(--up)' }}>
+                +{(data.stats?.totalStarsGained || 0).toLocaleString()}
+              </div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-dim)' }}>STARS GAINED</div>
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '24px', color: 'var(--gold)' }}>{data.stats?.newCount || 0}</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-dim)' }}>NEW ENTRIES</div>
+            </div>
+          </div>
+
+          {/* Week navigator + share */}
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', paddingBottom: '48px' }}>
+            <button
+              onClick={() => navigateWeek('prev')}
+              style={{
+                padding: '8px 16px',
+                borderRadius: '8px',
+                border: '1px solid var(--border)',
+                background: 'transparent',
+                color: 'var(--text-muted)',
+                fontFamily: 'var(--font-mono)',
+                fontSize: '12px',
+                cursor: 'pointer',
+              }}
+            >
+              ← Prev Week
+            </button>
+            <button
+              onClick={copyRecapUrl}
+              style={{
+                padding: '8px 16px',
+                borderRadius: '8px',
+                border: '1px solid var(--border)',
+                background: recapCopied ? 'rgba(0,229,160,0.1)' : 'transparent',
+                color: recapCopied ? 'var(--up)' : 'var(--text-muted)',
+                fontFamily: 'var(--font-mono)',
+                fontSize: '12px',
+                cursor: 'pointer',
+              }}
+            >
+              {recapCopied ? 'Copied!' : 'Share Recap'}
+            </button>
+            <button
+              onClick={() => navigateWeek('next')}
+              style={{
+                padding: '8px 16px',
+                borderRadius: '8px',
+                border: '1px solid var(--border)',
+                background: 'transparent',
+                color: 'var(--text-muted)',
+                fontFamily: 'var(--font-mono)',
+                fontSize: '12px',
+                cursor: 'pointer',
+              }}
+            >
+              Next Week →
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ─── Builder Profile ─────────────────────────────────────────────────────────
+
+function BuilderProfile() {
+  const params = new URLSearchParams(window.location.search)
+  const handle = params.get('handle') || ''
+  const [projects, setProjects] = useState([])
+  const [profile, setProfile] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [builderCopied, setBuilderCopied] = useState(false)
+
+  useEffect(() => {
+    if (!handle) { setLoading(false); return }
+    setLoading(true)
+
+    const fetches = []
+
+    // Fetch builder's projects
+    if (supabase) {
+      fetches.push(
+        supabase.from('ranked_projects').select('*')
+          .eq('builder_handle', handle)
+          .eq('review_status', 'approved')
+          .order('rank')
+          .then(({ data }) => setProjects(data || []))
+      )
+      fetches.push(
+        supabase.from('builder_profiles').select('*')
+          .eq('github_handle', handle)
+          .single()
+          .then(({ data }) => setProfile(data))
+      )
+    }
+
+    Promise.all(fetches).finally(() => setLoading(false))
+  }, [handle])
+
+  const copyBuilderUrl = async () => {
+    const shareUrl = `${API_BASE}/builder/${encodeURIComponent(handle)}`
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+      setBuilderCopied(true)
+      setTimeout(() => setBuilderCopied(false), 2000)
+    } catch {}
+  }
+
+  // Stats
+  const totalStars = projects.reduce((s, p) => s + (p.stars_total || 0), 0)
+  const starsGained7d = projects.reduce((s, p) => s + (p.stars_gained_7d || 0), 0)
+  const bestRank = projects.length > 0 ? Math.min(...projects.map(p => p.rank || 999)) : null
+
+  return (
+    <div style={{ maxWidth: '860px', margin: '0 auto', padding: '0 16px' }}>
+      {/* Header */}
+      <div style={{ padding: '16px 0' }}>
+        <a href="?" style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text-muted)', textDecoration: 'none' }}>
+          ← Back to rankings
+        </a>
+      </div>
+
+      {loading ? (
+        <div style={{ padding: '48px 0' }}>
+          <div className="skeleton" style={{ width: 64, height: 64, borderRadius: '50%', marginBottom: '16px' }} />
+          <div className="skeleton" style={{ width: '200px', height: '24px', marginBottom: '8px' }} />
+          <div className="skeleton" style={{ width: '150px', height: '16px' }} />
+        </div>
+      ) : (
+        <>
+          {/* Builder card */}
+          <div style={{ padding: '32px 0 24px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <img
+              src={`https://avatars.githubusercontent.com/${handle}`}
+              alt=""
+              style={{ width: 64, height: 64, borderRadius: '50%', border: '2px solid var(--border)' }}
+            />
+            <div>
+              <h1 style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '28px', margin: '0 0 4px' }}>
+                @{handle}
+              </h1>
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                <a
+                  href={`https://github.com/${handle}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--accent-blue)', textDecoration: 'none' }}
+                >
+                  GitHub
+                </a>
+                {profile?.x_handle && (
+                  <a
+                    href={`https://x.com/${profile.x_handle.replace('@', '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--accent-blue)', textDecoration: 'none' }}
+                  >
+                    {profile.x_handle}
+                  </a>
+                )}
+              </div>
+              {profile?.tagline && (
+                <p style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', color: 'var(--text-muted)', margin: '8px 0 0' }}>
+                  {profile.tagline}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Stats grid */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(4, 1fr)',
+            gap: '12px',
+            padding: '16px',
+            borderRadius: '12px',
+            border: '1px solid var(--border)',
+            background: 'var(--surface)',
+            marginBottom: '24px',
+          }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '24px' }}>{totalStars.toLocaleString()}</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-dim)' }}>TOTAL STARS</div>
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '24px', color: 'var(--up)' }}>+{starsGained7d.toLocaleString()}</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-dim)' }}>GAINED (7D)</div>
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '24px', color: 'var(--gold)' }}>
+                {bestRank ? `#${bestRank}` : '—'}
+              </div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-dim)' }}>BEST RANK</div>
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '24px' }}>{projects.length}</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-dim)' }}>PROJECTS</div>
+            </div>
+          </div>
+
+          {/* Project list */}
+          {projects.length > 0 ? (
+            <div style={{ borderTop: '1px solid var(--border)' }}>
+              {projects.map((project, i) => (
+                <div
+                  key={project.id}
+                  onClick={() => {
+                    const url = new URL(window.location)
+                    url.searchParams.delete('view')
+                    url.searchParams.delete('handle')
+                    url.searchParams.set('project', project.full_name.replace('/', '--'))
+                    window.location.href = url.toString()
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    padding: '12px 16px',
+                    borderBottom: '1px solid var(--border)',
+                    cursor: 'pointer',
+                    transition: 'background 0.2s',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(77,156,255,0.03)' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                >
+                  <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '20px', color: 'var(--text-dim)', minWidth: '32px', textAlign: 'right' }}>
+                    {project.rank || '—'}
+                  </div>
+                  <img src={project.avatar_url} alt="" style={{ width: 28, height: 28, borderRadius: '50%', border: '1px solid var(--border)' }} loading="lazy" />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontFamily: 'var(--font-body)', fontWeight: 600, fontSize: '14px' }}>{project.name}</div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {stripHtml(project.description)}
+                    </div>
+                  </div>
+                  <DeltaBadge project={project} />
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', fontWeight: 500, color: 'var(--up)', minWidth: '48px', textAlign: 'right' }}>
+                    +{project.stars_gained_7d || 0}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ textAlign: 'center', padding: '48px 0', fontFamily: 'var(--font-mono)', fontSize: '14px', color: 'var(--text-muted)' }}>
+              No ranked projects found for @{handle}.
+            </div>
+          )}
+
+          {/* Share button */}
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '32px 0' }}>
+            <button
+              onClick={copyBuilderUrl}
+              style={{
+                padding: '10px 24px',
+                borderRadius: '10px',
+                border: '1px solid var(--border)',
+                background: builderCopied ? 'rgba(0,229,160,0.1)' : 'transparent',
+                color: builderCopied ? 'var(--up)' : 'var(--text-muted)',
+                fontFamily: 'var(--font-mono)',
+                fontSize: '13px',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+              }}
+            >
+              {builderCopied ? 'Copied!' : 'Share Profile'}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 // ─── App ─────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  // Dashboard view routing
-  if (getView() === 'dashboard') {
+  // View routing
+  const view = getView()
+  if (view === 'dashboard') {
     return (
       <DashboardGate>
         <Dashboard />
       </DashboardGate>
     )
   }
+  if (view === 'recap') return <WeeklyRecap />
+  if (view === 'builder') return <BuilderProfile />
 
   const [projects, setProjects] = useState([])
   const [loading, setLoading] = useState(true)
@@ -2772,7 +3580,20 @@ export default function App() {
           lineHeight: 1.8,
         }}>
           <div>Powered by GitHub API + Supabase</div>
-          <div style={{ marginTop: '4px' }}>Built by jerrysoer and Claude</div>
+          <div style={{ marginTop: '4px' }}>
+            Built by jerrysoer and Claude
+            {' · '}
+            <a
+              href={`${API_BASE}/api/rss`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: 'var(--text-muted)', textDecoration: 'none' }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent-blue)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)' }}
+            >
+              RSS
+            </a>
+          </div>
           <div style={{ marginTop: '8px', color: 'var(--text-muted)' }}>
             Updated {lastUpdated}
           </div>

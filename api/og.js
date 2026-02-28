@@ -60,6 +60,43 @@ function generateProjectSvg(project) {
 </svg>`
 }
 
+async function fetchBuilderProjectCount(handle) {
+  const url = process.env.SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !key) return 0
+
+  const res = await fetch(
+    `${url}/rest/v1/ranked_projects?builder_handle=eq.${encodeURIComponent(handle)}&review_status=eq.approved&select=id`,
+    { headers: { apikey: key, Authorization: `Bearer ${key}` } }
+  )
+  if (!res.ok) return 0
+  const rows = await res.json()
+  return rows.length
+}
+
+function generateBuilderSvg(handle, projectCount) {
+  const safeName = escapeXml(`@${handle}`)
+  const weekDate = escapeXml(formatWeekDate())
+
+  return `<svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="bloom" cx="0.15" cy="0.15" r="0.7">
+      <stop offset="0%" stop-color="#1a2a5e" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#0A0F1E" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="#0A0F1E"/>
+  <rect width="1200" height="630" fill="url(#bloom)"/>
+  <rect x="0" y="0" width="4" height="630" fill="#4D9CFF"/>
+  <text x="60" y="52" font-size="20" font-weight="700" font-family="system-ui, -apple-system, sans-serif" fill="#F0F4FF" letter-spacing="3">SHIPRANKED</text>
+  <text x="1140" y="52" text-anchor="end" font-size="14" font-family="system-ui, -apple-system, sans-serif" fill="#5A6A8A">Builder Profile</text>
+  <text x="60" y="280" font-size="64" font-weight="800" font-family="system-ui, -apple-system, sans-serif" fill="#F0F4FF">${safeName}</text>
+  <text x="60" y="340" font-size="24" font-weight="500" font-family="system-ui, -apple-system, sans-serif" fill="#5A6A8A">${projectCount} ranked project${projectCount !== 1 ? 's' : ''} on ShipRanked</text>
+  <text x="60" y="400" font-size="16" font-family="system-ui, -apple-system, sans-serif" fill="#FF8C42">&#x25C6; Built with Claude Code</text>
+  <text x="60" y="600" font-size="13" font-family="system-ui, -apple-system, sans-serif" fill="#3A4A6A">shipranked.jerrysoer.com</text>
+</svg>`
+}
+
 function generateFallbackSvg() {
   const weekDate = escapeXml(formatWeekDate())
   return `<svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg">
@@ -87,7 +124,19 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('X-Content-Type-Options', 'nosniff')
 
-  const { slug } = req.query
+  const { slug, builder } = req.query
+
+  // Builder OG image
+  if (builder && typeof builder === 'string' && builder.length <= 100 && /^[\w.\-]+$/.test(builder)) {
+    try {
+      const count = await fetchBuilderProjectCount(builder)
+      return res.status(200).send(generateBuilderSvg(builder, count))
+    } catch (err) {
+      console.error('Builder OG error:', err)
+      return res.status(200).send(generateFallbackSvg())
+    }
+  }
+
   if (!slug || typeof slug !== 'string' || slug.length > 200 || !slug.includes('--')) {
     return res.status(200).send(generateFallbackSvg())
   }
