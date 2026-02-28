@@ -1,0 +1,16 @@
+<svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="bloom" cx="0.15" cy="0.15" r="0.7">
+      <stop offset="0%" stop-color="#1a2a5e" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#0A0F1E" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="#0A0F1E"/>
+  <rect width="1200" height="630" fill="url(#bloom)"/>
+  <rect x="0" y="0" width="4" height="630" fill="#4D9CFF"/>
+  <text x="60" y="52" font-size="20" font-weight="700" font-family="system-ui, -apple-system, sans-serif" fill="#F0F4FF" letter-spacing="3">SHIPRANKED</text>
+  <text x="60" y="280" font-size="56" font-weight="800" font-family="system-ui, -apple-system, sans-serif" fill="#F0F4FF">ShipRanked</text>
+  <text x="60" y="340" font-size="28" font-weight="500" font-family="system-ui, -apple-system, sans-serif" fill="#5A6A8A">GitHub leaderboard for Claude Code projects</text>
+  <text x="60" y="400" font-size="16" font-family="system-ui, -apple-system, sans-serif" fill="#FF8C42">&#x25C6; Built with Claude Code</text>
+  <text x="60" y="600" font-size="13" font-family="system-ui, -apple-system, sans-serif" fill="#3A4A6A">shipranked.jerrysoer.com</text>
+</svg>
