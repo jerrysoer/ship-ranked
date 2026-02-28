@@ -3584,6 +3584,17 @@ export default function App() {
             Built by jerrysoer and Claude
             {' · '}
             <a
+              href="https://github.com/jerrysoer/ship-ranked"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: 'var(--text-muted)', textDecoration: 'none' }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent-blue)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)' }}
+            >
+              GitHub
+            </a>
+            {' · '}
+            <a
               href={`${API_BASE}/api/rss`}
               target="_blank"
               rel="noopener noreferrer"
