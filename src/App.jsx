@@ -4,7 +4,8 @@ import { supabase } from './lib/supabase'
 // ─── Analytics ───────────────────────────────────────────────────────────────
 
 const track = (event, data) => {
-  try { if (window.umami) window.umami.track(event, data) } catch (e) { /* noop */ }
+  if (!supabase) return
+  supabase.from('analytics_events').insert({ event, data }).then(null, () => {})
 }
 
 // ─── Mock Data ───────────────────────────────────────────────────────────────
@@ -269,6 +270,11 @@ function getSignalLabel(signal) {
   if (signal === 'topic-claude-code') return 'Claude Code'
   if (signal === 'topic-vibe-coding') return 'Vibe Coded'
   return signal || ''
+}
+
+function stripHtml(str) {
+  if (!str) return str
+  return str.replace(/<[^>]+>/g, '').trim()
 }
 
 // ─── Copy Share ──────────────────────────────────────────────────────────────
@@ -539,7 +545,7 @@ function PodiumCard({ project, position, copiedId, setCopiedId, highlighted, spa
         WebkitBoxOrient: 'vertical',
         overflow: 'hidden',
       }}>
-        {project.description}
+        {stripHtml(project.description)}
       </div>
 
       {/* Stats row */}
@@ -681,7 +687,7 @@ function ChartRow({ project, index, copiedId, setCopiedId, highlighted, sparklin
             overflow: 'hidden',
           }}
         >
-          {project.description}
+          {stripHtml(project.description)}
         </div>
       </div>
 
@@ -925,7 +931,7 @@ function ProjectModal({ project, sparklineData, copiedId, setCopiedId, onClose }
           lineHeight: 1.6,
           margin: '16px 0',
         }}>
-          {project.readme_summary || project.description}
+          {stripHtml(project.readme_summary || project.description)}
         </p>
 
         {/* Badges */}
@@ -1501,10 +1507,404 @@ function DashboardGate({ children }) {
   )
 }
 
+// ─── Dashboard: Tab & Analytics Components ──────────────────────────────────
+
+function TabButton({ label, active, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        fontFamily: 'var(--font-mono)',
+        fontSize: '13px',
+        fontWeight: active ? 600 : 400,
+        color: active ? 'var(--text-primary)' : 'var(--text-muted)',
+        background: 'none',
+        border: 'none',
+        borderBottom: active ? '2px solid var(--accent-blue)' : '2px solid transparent',
+        padding: '8px 16px',
+        cursor: 'pointer',
+        transition: 'all 0.2s',
+      }}
+      onMouseEnter={(e) => {
+        if (!active) e.currentTarget.style.color = 'var(--text-primary)'
+      }}
+      onMouseLeave={(e) => {
+        if (!active) e.currentTarget.style.color = 'var(--text-muted)'
+      }}
+    >
+      {label}
+    </button>
+  )
+}
+
+function AnalyticsSkeleton() {
+  return (
+    <div style={{ padding: '24px 0' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginBottom: '32px' }}>
+        {[1, 2, 3, 4].map(i => (
+          <div key={i} style={{ padding: '16px', borderRadius: '10px', border: '1px solid var(--border)', background: 'var(--surface)' }}>
+            <div className="skeleton" style={{ width: '80px', height: '10px', marginBottom: '12px' }} />
+            <div className="skeleton" style={{ width: '60px', height: '28px' }} />
+          </div>
+        ))}
+      </div>
+      <div className="skeleton" style={{ width: '100%', height: '200px', borderRadius: '10px' }} />
+    </div>
+  )
+}
+
+function AnalyticsUnavailable() {
+  return (
+    <div style={{
+      fontFamily: 'var(--font-mono)',
+      fontSize: '13px',
+      color: 'var(--text-dim)',
+      textAlign: 'center',
+      padding: '48px 0',
+    }}>
+      Analytics data is currently unavailable.
+    </div>
+  )
+}
+
+function SummaryCards({ summary }) {
+  const cards = [
+    { label: 'Total Events', value: summary.total },
+    { label: 'Today', value: summary.today },
+    { label: 'Badge Views', value: summary.badgeViews },
+    { label: 'Share Clicks', value: summary.shareClicks },
+  ]
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginBottom: '32px' }}>
+      {cards.map(card => (
+        <div key={card.label} style={{
+          padding: '16px',
+          borderRadius: '10px',
+          border: '1px solid var(--border)',
+          background: 'var(--surface)',
+        }}>
+          <div style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: '11px',
+            color: 'var(--text-dim)',
+            textTransform: 'uppercase',
+            marginBottom: '8px',
+          }}>
+            {card.label}
+          </div>
+          <div style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: '28px',
+            fontWeight: 700,
+            color: 'var(--text-primary)',
+          }}>
+            {card.value.toLocaleString()}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function EventsByType({ byType }) {
+  if (!byType.length) return null
+  const max = byType[0].count
+  return (
+    <div style={{ marginBottom: '32px' }}>
+      <h3 style={{
+        fontFamily: 'var(--font-display)',
+        fontWeight: 600,
+        fontSize: '16px',
+        marginBottom: '16px',
+        color: 'var(--text-primary)',
+      }}>
+        Events by Type
+      </h3>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        {byType.map(item => (
+          <div key={item.event} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: '12px',
+              color: 'var(--text-muted)',
+              width: '140px',
+              flexShrink: 0,
+              textAlign: 'right',
+            }}>
+              {item.event}
+            </span>
+            <div style={{
+              flex: 1,
+              height: '6px',
+              background: 'var(--border)',
+              borderRadius: '3px',
+              overflow: 'hidden',
+            }}>
+              <div style={{
+                width: `${(item.count / max) * 100}%`,
+                height: '100%',
+                background: 'var(--accent-blue)',
+                borderRadius: '3px',
+                transition: 'width 0.5s ease-out',
+              }} />
+            </div>
+            <span style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: '12px',
+              color: 'var(--text-primary)',
+              width: '48px',
+              flexShrink: 0,
+            }}>
+              {item.count}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function DailyTrend({ dailyTrend }) {
+  if (!dailyTrend.length) return null
+  return (
+    <div style={{ marginBottom: '32px' }}>
+      <h3 style={{
+        fontFamily: 'var(--font-display)',
+        fontWeight: 600,
+        fontSize: '16px',
+        marginBottom: '16px',
+        color: 'var(--text-primary)',
+      }}>
+        Daily Trend (14 days)
+      </h3>
+      <Sparkline
+        data={dailyTrend.map(d => d.count)}
+        width={780}
+        height={60}
+        color="var(--accent-blue)"
+      />
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        fontFamily: 'var(--font-mono)',
+        fontSize: '10px',
+        color: 'var(--text-dim)',
+        marginTop: '4px',
+      }}>
+        <span>{dailyTrend[0].date}</span>
+        <span>{dailyTrend[dailyTrend.length - 1].date}</span>
+      </div>
+    </div>
+  )
+}
+
+function TopBadgeProjects({ projects }) {
+  if (!projects.length) {
+    return (
+      <div style={{ marginBottom: '32px' }}>
+        <h3 style={{
+          fontFamily: 'var(--font-display)',
+          fontWeight: 600,
+          fontSize: '16px',
+          marginBottom: '16px',
+          color: 'var(--text-primary)',
+        }}>
+          Top Badge Projects
+        </h3>
+        <div style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: '12px',
+          color: 'var(--text-dim)',
+        }}>
+          No badge views yet
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div style={{ marginBottom: '32px' }}>
+      <h3 style={{
+        fontFamily: 'var(--font-display)',
+        fontWeight: 600,
+        fontSize: '16px',
+        marginBottom: '16px',
+        color: 'var(--text-primary)',
+      }}>
+        Top Badge Projects
+      </h3>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+        {projects.map((p, i) => (
+          <div key={p.project} style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            padding: '8px 12px',
+            borderRadius: '8px',
+            background: i === 0 ? 'rgba(255,184,48,0.04)' : 'transparent',
+          }}>
+            <span style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: '12px',
+              color: 'var(--text-dim)',
+              width: '24px',
+            }}>
+              #{i + 1}
+            </span>
+            <span style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: '13px',
+              color: 'var(--text-primary)',
+              flex: 1,
+            }}>
+              {p.project.replace('github:', '')}
+            </span>
+            <span style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: '11px',
+              color: 'var(--accent-blue)',
+              background: 'var(--accent-blue-glow)',
+              padding: '2px 8px',
+              borderRadius: '4px',
+            }}>
+              {p.count}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function timeAgo(dateStr) {
+  const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000)
+  if (seconds < 60) return `${seconds}s ago`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  return `${days}d ago`
+}
+
+function formatEventData(event, data) {
+  if (!data) return ''
+  if (event === 'badge-view' || event === 'project-click') {
+    return data.project?.replace('github:', '') || ''
+  }
+  if (event === 'share-click') {
+    return data.name || data.project?.replace('github:', '') || ''
+  }
+  if (event === 'category-filter') return data.category || ''
+  if (event === 'sort-toggle') return data.sortBy || ''
+  if (event === 'filter-new' || event === 'filter-small') return data.active ? 'on' : 'off'
+  const vals = Object.values(data)
+  const first = vals.find(v => typeof v === 'string')
+  return first ? (first.length > 40 ? first.slice(0, 37) + '...' : first) : ''
+}
+
+function RecentActivity({ recent }) {
+  if (!recent.length) return null
+  return (
+    <div style={{ marginBottom: '32px' }}>
+      <h3 style={{
+        fontFamily: 'var(--font-display)',
+        fontWeight: 600,
+        fontSize: '16px',
+        marginBottom: '16px',
+        color: 'var(--text-primary)',
+      }}>
+        Recent Activity
+      </h3>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+        {recent.map((e, i) => (
+          <div key={i} style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            padding: '6px 8px',
+            borderRadius: '6px',
+            fontSize: '12px',
+          }}>
+            <span style={{
+              width: '6px',
+              height: '6px',
+              borderRadius: '50%',
+              background: e.source === 'client' ? 'var(--up)' : 'var(--accent-blue)',
+              flexShrink: 0,
+            }} />
+            <span style={{
+              fontFamily: 'var(--font-mono)',
+              color: 'var(--text-primary)',
+              fontWeight: 500,
+              width: '120px',
+              flexShrink: 0,
+            }}>
+              {e.event}
+            </span>
+            <span style={{
+              fontFamily: 'var(--font-mono)',
+              color: 'var(--text-muted)',
+              flex: 1,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}>
+              {formatEventData(e.event, e.data)}
+            </span>
+            <span style={{
+              fontFamily: 'var(--font-mono)',
+              color: 'var(--text-dim)',
+              flexShrink: 0,
+            }}>
+              {timeAgo(e.created_at)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function AnalyticsTab() {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/analytics')
+      .then(res => {
+        if (!res.ok) throw new Error('Failed')
+        return res.json()
+      })
+      .then(d => {
+        setData(d)
+        setLoading(false)
+      })
+      .catch(() => {
+        setError(true)
+        setLoading(false)
+      })
+  }, [])
+
+  if (loading) return <AnalyticsSkeleton />
+  if (error || !data) return <AnalyticsUnavailable />
+
+  return (
+    <div>
+      <SummaryCards summary={data.summary} />
+      <EventsByType byType={data.byType} />
+      <DailyTrend dailyTrend={data.dailyTrend} />
+      <TopBadgeProjects projects={data.topBadgeProjects} />
+      <RecentActivity recent={data.recent} />
+    </div>
+  )
+}
+
 function Dashboard() {
   const [drafts, setDrafts] = useState([])
   const [loading, setLoading] = useState(true)
   const [copiedField, setCopiedField] = useState(null)
+  const [tab, setTab] = useState('drafts')
 
   useEffect(() => {
     if (!supabase) {
@@ -1567,7 +1967,7 @@ function Dashboard() {
 
   return (
     <div style={{ maxWidth: '860px', margin: '0 auto', padding: '32px 16px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '32px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
         <div>
           <h1 style={{
             fontFamily: 'var(--font-display)',
@@ -1575,7 +1975,7 @@ function Dashboard() {
             fontSize: '24px',
             margin: '0 0 4px',
           }}>
-            Draft Review
+            Dashboard
           </h1>
           <p style={{
             fontFamily: 'var(--font-mono)',
@@ -1583,7 +1983,7 @@ function Dashboard() {
             color: 'var(--text-dim)',
             margin: 0,
           }}>
-            Weekly content drafts for Reddit & X
+            ShipRanked admin tools
           </p>
         </div>
         <a
@@ -1599,6 +1999,12 @@ function Dashboard() {
         </a>
       </div>
 
+      <div style={{ display: 'flex', gap: '0', borderBottom: '1px solid var(--border)', marginBottom: '24px' }}>
+        <TabButton label="Drafts" active={tab === 'drafts'} onClick={() => setTab('drafts')} />
+        <TabButton label="Analytics" active={tab === 'analytics'} onClick={() => setTab('analytics')} />
+      </div>
+
+      {tab === 'drafts' ? (<>
       {loading && (
         <div style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', color: 'var(--text-dim)', textAlign: 'center', padding: '48px 0' }}>
           Loading drafts...
@@ -1776,6 +2182,9 @@ function Dashboard() {
           ))}
         </div>
       ))}
+      </>) : (
+        <AnalyticsTab />
+      )}
     </div>
   )
 }

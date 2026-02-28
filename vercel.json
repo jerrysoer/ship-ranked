@@ -16,6 +16,7 @@
     "api/cron/fetch-projects.js": { "maxDuration": 60 },
     "api/badge.js": { "maxDuration": 5 },
     "api/og.js": { "maxDuration": 5 },
-    "api/share.js": { "maxDuration": 5 }
+    "api/share.js": { "maxDuration": 5 },
+    "api/analytics.js": { "maxDuration": 10 }
   }
 }

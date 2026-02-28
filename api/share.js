@@ -16,6 +16,25 @@ async function fetchProject(projectId) {
   return rows[0] || null
 }
 
+function trackEvent(event, data, req) {
+  const url = process.env.SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !key) return
+
+  fetch(`${url}/rest/v1/analytics_events`, {
+    method: 'POST',
+    headers: {
+      apikey: key, Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json', Prefer: 'return=minimal',
+    },
+    body: JSON.stringify({
+      event, data, source: 'server',
+      referrer: req.headers.referer || req.headers.referrer || null,
+      user_agent: req.headers['user-agent'] || null,
+    }),
+  }).catch(() => {})
+}
+
 function isValidSlug(s) {
   if (!s || typeof s !== 'string' || s.length > 200 || !s.includes('--')) return false
   const [owner, ...rest] = s.split('--')
@@ -86,6 +105,8 @@ export default async function handler(req, res) {
     const [owner, ...repoParts] = slug.split('--')
     const repo = repoParts.join('--')
     const projectId = `github:${owner}/${repo}`
+
+    trackEvent('share-click', { project: projectId }, req)
 
     ogImageUrl = `${baseUrl}/api/og?slug=${slug}`
     redirectUrl = `https://jerrysoer.github.io/ship-ranked/?project=${slug}`

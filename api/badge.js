@@ -16,6 +16,25 @@ async function fetchProject(projectId) {
   return rows[0] || null
 }
 
+function trackEvent(event, data, req) {
+  const url = process.env.SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !key) return
+
+  fetch(`${url}/rest/v1/analytics_events`, {
+    method: 'POST',
+    headers: {
+      apikey: key, Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json', Prefer: 'return=minimal',
+    },
+    body: JSON.stringify({
+      event, data, source: 'server',
+      referrer: req.headers.referer || req.headers.referrer || null,
+      user_agent: req.headers['user-agent'] || null,
+    }),
+  }).catch(() => {})
+}
+
 function escapeXml(str) {
   return String(str)
     .replace(/&/g, '&amp;')
@@ -110,6 +129,7 @@ export default async function handler(req, res) {
   try {
     const data = await fetchProject(projectId)
     if (!data) return res.status(200).send(generateNotRankedBadge())
+    trackEvent('badge-view', { project: projectId, rank: data.rank }, req)
     return res.status(200).send(generateBadge(data))
   } catch (err) {
     console.error('Badge error:', err)
