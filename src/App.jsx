@@ -1397,7 +1397,7 @@ function HallOfFame() {
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
               }}>
-                {project.name}
+                {project.full_name?.split('/')[1] || project.full_name}
               </span>
             </div>
             <p style={{

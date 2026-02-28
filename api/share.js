@@ -16,6 +16,12 @@ async function fetchProject(projectId) {
   return rows[0] || null
 }
 
+function isValidSlug(s) {
+  if (!s || typeof s !== 'string' || s.length > 200 || !s.includes('--')) return false
+  const [owner, ...rest] = s.split('--')
+  return /^[\w.\-]+$/.test(owner) && /^[\w.\-]+$/.test(rest.join('--'))
+}
+
 function escapeHtml(str) {
   return String(str)
     .replace(/&/g, '&amp;')
@@ -76,7 +82,7 @@ export default async function handler(req, res) {
   let ogImageUrl = `${baseUrl}/api/og`
   let redirectUrl = 'https://jerrysoer.github.io/ship-ranked/'
 
-  if (slug && slug.includes('--')) {
+  if (isValidSlug(slug)) {
     const [owner, ...repoParts] = slug.split('--')
     const repo = repoParts.join('--')
     const projectId = `github:${owner}/${repo}`

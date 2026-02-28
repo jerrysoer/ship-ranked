@@ -91,14 +91,20 @@ export default async function handler(req, res) {
   res.setHeader('Content-Type', 'image/svg+xml')
   res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400')
   res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('X-Content-Type-Options', 'nosniff')
 
   const { project } = req.query
-  if (!project || !project.includes('--')) {
+  if (!project || typeof project !== 'string' || project.length > 200 || !project.includes('--')) {
     return res.status(200).send(generateNotRankedBadge())
   }
 
   const [owner, ...repoParts] = project.split('--')
   const repo = repoParts.join('--')
+
+  // Validate GitHub-safe characters
+  if (!/^[\w.\-]+$/.test(owner) || !/^[\w.\-]+$/.test(repo)) {
+    return res.status(200).send(generateNotRankedBadge())
+  }
   const projectId = `github:${owner}/${repo}`
 
   try {

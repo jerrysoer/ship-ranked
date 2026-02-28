@@ -85,14 +85,20 @@ export default async function handler(req, res) {
   res.setHeader('Content-Type', 'image/svg+xml')
   res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400')
   res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('X-Content-Type-Options', 'nosniff')
 
   const { slug } = req.query
-  if (!slug || !slug.includes('--')) {
+  if (!slug || typeof slug !== 'string' || slug.length > 200 || !slug.includes('--')) {
     return res.status(200).send(generateFallbackSvg())
   }
 
   const [owner, ...repoParts] = slug.split('--')
   const repo = repoParts.join('--')
+
+  // Validate GitHub-safe characters
+  if (!/^[\w.\-]+$/.test(owner) || !/^[\w.\-]+$/.test(repo)) {
+    return res.status(200).send(generateFallbackSvg())
+  }
   const projectId = `github:${owner}/${repo}`
 
   try {
