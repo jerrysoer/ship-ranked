@@ -255,11 +255,6 @@ function getView() {
   return new URLSearchParams(window.location.search).get('view')
 }
 
-function getInitialCategory() {
-  const params = new URLSearchParams(window.location.search)
-  return params.get('category') || 'all'
-}
-
 function getDeepLinkProject() {
   const params = new URLSearchParams(window.location.search)
   const slug = params.get('project')
@@ -3060,7 +3055,6 @@ export default function App() {
 
   const [projects, setProjects] = useState([])
   const [loading, setLoading] = useState(true)
-  const [category, setCategory] = useState(getInitialCategory)
   const [platform, setPlatform] = useState(getInitialPlatform)
   const [platformCounts, setPlatformCounts] = useState({})
   const [copiedId, setCopiedId] = useState(null)
@@ -3068,10 +3062,6 @@ export default function App() {
   const [highlightedProject, setHighlightedProject] = useState(null)
   const deepLinkTarget = useMemo(() => getDeepLinkProject(), [])
 
-  // New state: filters & sorting
-  const [sortBy, setSortBy] = useState('rank')
-  const [showNewOnly, setShowNewOnly] = useState(false)
-  const [smallOnly, setSmallOnly] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const debouncedSearch = useDebounce(searchTerm, 300)
 
@@ -3089,48 +3079,23 @@ export default function App() {
     async function fetchData() {
       setLoading(true)
       if (!supabase) {
-        let filtered = [...MOCK_DATA]
-        if (category !== 'all') filtered = filtered.filter(p => p.category === category)
-        if (showNewOnly) filtered = filtered.filter(p => p.is_new)
-        if (smallOnly) filtered = filtered.filter(p => p.stars_total < 1000)
-        if (sortBy === 'movers') {
-          filtered.sort((a, b) => (b.rank_delta || 0) - (a.rank_delta || 0))
-          filtered = filtered.map((p, i) => ({ ...p, rank: i + 1 }))
-        }
-        setProjects(filtered)
+        setProjects([...MOCK_DATA])
         setLoading(false)
         return
       }
 
-      let query = supabase.from('ranked_projects').select('*')
+      const { data } = await supabase.from('ranked_projects').select('*')
         .eq('review_status', 'approved')
         .neq('category', 'featured')
         .neq('agent_platform', 'other')
+        .order('rank', { ascending: true })
+        .limit(100)
 
-      if (sortBy === 'movers') {
-        query = query.order('rank_delta', { ascending: false })
-      } else {
-        query = query.order('rank', { ascending: true })
-      }
-
-      query = query.limit(100)
-      if (category !== 'all') query = query.eq('category', category)
-      if (showNewOnly) query = query.eq('is_new', true)
-      if (smallOnly) query = query.lt('stars_total', 1000)
-
-      const { data } = await query
-      let results = data || []
-
-      // Re-assign visual rank when sorting by movers
-      if (sortBy === 'movers') {
-        results = results.map((p, i) => ({ ...p, rank: i + 1 }))
-      }
-
-      setProjects(results)
+      setProjects(data || [])
       setLoading(false)
     }
     fetchData()
-  }, [category, sortBy, showNewOnly, smallOnly])
+  }, [platform])
 
   // Fetch sparkline snapshots
   useEffect(() => {
@@ -3178,19 +3143,6 @@ export default function App() {
     const onScroll = () => setScrolled(window.scrollY > 240)
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
-  }, [])
-
-  // Category change handler
-  const handleCategoryChange = useCallback((value) => {
-    setCategory(value)
-    const url = new URL(window.location)
-    if (value === 'all') {
-      url.searchParams.delete('category')
-    } else {
-      url.searchParams.set('category', value)
-    }
-    window.history.replaceState({}, '', url)
-    track('category-filter', { category: value })
   }, [])
 
   // Platform change handler
@@ -3435,143 +3387,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* ─── Filter Bar ──────────────────────────────────────────── */}
-      <div
-        style={{
-          position: 'sticky',
-          top: '53px',
-          zIndex: 40,
-          margin: '0 -16px',
-          padding: '12px 16px',
-          backdropFilter: 'blur(12px)',
-          background: 'rgba(10,15,30,0.85)',
-          borderBottom: '1px solid var(--border)',
-        }}
-      >
-        <div
-          className="hide-scrollbar"
-          style={{
-            display: 'flex',
-            gap: '8px',
-            overflowX: 'auto',
-            paddingBottom: '2px',
-          }}
-        >
-          {/* Category pills */}
-          {CATEGORIES.map(cat => {
-            const isActive = category === cat.value
-            return (
-              <button
-                key={cat.value}
-                onClick={() => handleCategoryChange(cat.value)}
-                style={{
-                  fontFamily: 'var(--font-body)',
-                  fontSize: '13px',
-                  fontWeight: isActive ? 600 : 500,
-                  color: isActive ? 'var(--accent-blue)' : 'var(--text-muted)',
-                  background: isActive ? 'var(--accent-blue-glow)' : 'transparent',
-                  border: `1px solid ${isActive ? 'var(--accent-blue)' : 'var(--border)'}`,
-                  borderRadius: '20px',
-                  padding: '6px 16px',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                  transition: 'all 0.2s',
-                  touchAction: 'manipulation',
-                  flexShrink: 0,
-                }}
-                onMouseEnter={(e) => {
-                  if (!isActive) e.currentTarget.style.borderColor = 'var(--border-bright)'
-                }}
-                onMouseLeave={(e) => {
-                  if (!isActive) e.currentTarget.style.borderColor = 'var(--border)'
-                }}
-              >
-                {cat.label}
-              </button>
-            )
-          })}
-
-          {/* Separator */}
-          <div style={{ width: '1px', background: 'var(--border)', flexShrink: 0, margin: '4px 4px' }} />
-
-          {/* Biggest Movers toggle */}
-          <button
-            onClick={() => {
-              const next = sortBy === 'movers' ? 'rank' : 'movers'
-              setSortBy(next)
-              track('sort-toggle', { sortBy: next })
-            }}
-            style={{
-              fontFamily: 'var(--font-body)',
-              fontSize: '13px',
-              fontWeight: sortBy === 'movers' ? 600 : 500,
-              color: sortBy === 'movers' ? 'var(--up)' : 'var(--text-muted)',
-              background: sortBy === 'movers' ? 'rgba(0,229,160,0.1)' : 'transparent',
-              border: `1px solid ${sortBy === 'movers' ? 'var(--up)' : 'var(--border)'}`,
-              borderRadius: '20px',
-              padding: '6px 16px',
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-              transition: 'all 0.2s',
-              touchAction: 'manipulation',
-              flexShrink: 0,
-            }}
-          >
-            Biggest Movers
-          </button>
-
-          {/* New This Week */}
-          <button
-            onClick={() => {
-              setShowNewOnly(!showNewOnly)
-              track('filter-new', { active: !showNewOnly })
-            }}
-            style={{
-              fontFamily: 'var(--font-body)',
-              fontSize: '13px',
-              fontWeight: showNewOnly ? 600 : 500,
-              color: showNewOnly ? 'var(--gold)' : 'var(--text-muted)',
-              background: showNewOnly ? 'rgba(255,184,48,0.1)' : 'transparent',
-              border: `1px solid ${showNewOnly ? 'var(--gold)' : 'var(--border)'}`,
-              borderRadius: '20px',
-              padding: '6px 16px',
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-              transition: 'all 0.2s',
-              touchAction: 'manipulation',
-              flexShrink: 0,
-            }}
-          >
-            New This Week
-          </button>
-
-          {/* Under 1k Stars */}
-          <button
-            onClick={() => {
-              setSmallOnly(!smallOnly)
-              track('filter-small', { active: !smallOnly })
-            }}
-            style={{
-              fontFamily: 'var(--font-body)',
-              fontSize: '13px',
-              fontWeight: smallOnly ? 600 : 500,
-              color: smallOnly ? 'var(--claude-amber)' : 'var(--text-muted)',
-              background: smallOnly ? 'rgba(255,140,66,0.1)' : 'transparent',
-              border: `1px solid ${smallOnly ? 'var(--claude-amber)' : 'var(--border)'}`,
-              borderRadius: '20px',
-              padding: '6px 16px',
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-              transition: 'all 0.2s',
-              touchAction: 'manipulation',
-              flexShrink: 0,
-            }}
-          >
-            Under 1k Stars
-          </button>
-        </div>
-      </div>
-
       {/* ─── Content ────────────────────────────────────────────── */}
       {loading ? (
         <div style={{ paddingTop: '24px' }}>
@@ -3587,7 +3402,7 @@ export default function App() {
         }}>
           {debouncedSearch
             ? `No projects matching "${debouncedSearch}".`
-            : 'No projects found in this category yet.'}
+            : 'No projects found yet.'}
         </div>
       ) : (
         <>
