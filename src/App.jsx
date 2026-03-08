@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { supabase } from './lib/supabase'
 import { PLATFORMS, PLATFORM_ORDER } from './lib/platforms'
+import { filterProjects } from './lib/filterProjects'
 import PlatformTabs from './components/PlatformTabs'
 
 // ─── Analytics ───────────────────────────────────────────────────────────────
@@ -3178,27 +3179,9 @@ export default function App() {
   }, [projects])
 
   // Client-side platform + toggle + search filter
-  const filteredProjects = useMemo(() => {
-    let result = projects
-    if (platform !== 'all') {
-      result = result.filter(p => (p.agent_platform || 'claude-code') === platform)
-    }
-    if (showNewOnly) result = result.filter(p => p.is_new)
-    if (smallOnly) result = result.filter(p => p.stars_total < 1000)
-    if (sortBy === 'movers') {
-      result = [...result].sort((a, b) => (b.rank_delta || 0) - (a.rank_delta || 0))
-    }
-    if (debouncedSearch) {
-      const q = debouncedSearch.toLowerCase()
-      result = result.filter(p =>
-        p.name.toLowerCase().includes(q) ||
-        p.full_name.toLowerCase().includes(q) ||
-        (p.description || '').toLowerCase().includes(q)
-      )
-    }
-    // Always re-rank to close gaps from server-side exclusions
-    return result.map((p, i) => ({ ...p, rank: i + 1 }))
-  }, [projects, platform, debouncedSearch, sortBy, showNewOnly, smallOnly])
+  const filteredProjects = useMemo(() =>
+    filterProjects(projects, { platform, sortBy, showNewOnly, smallOnly, search: debouncedSearch })
+  , [projects, platform, debouncedSearch, sortBy, showNewOnly, smallOnly])
 
   // Show banner when all stars_gained_7d are 0 (data is calibrating)
   const showBanner = !bannerDismissed && projects.length > 0 && projects.every(p => p.stars_gained_7d === 0)
