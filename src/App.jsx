@@ -3064,6 +3064,9 @@ export default function App() {
 
   const [searchTerm, setSearchTerm] = useState('')
   const debouncedSearch = useDebounce(searchTerm, 300)
+  const [sortBy, setSortBy] = useState('rank')
+  const [showNewOnly, setShowNewOnly] = useState(false)
+  const [smallOnly, setSmallOnly] = useState(false)
 
   // New state: banner
   const [bannerDismissed, setBannerDismissed] = useState(() => {
@@ -3174,11 +3177,17 @@ export default function App() {
     setPlatformCounts(counts)
   }, [projects])
 
-  // Client-side platform + search filter
+  // Client-side platform + toggle + search filter
   const filteredProjects = useMemo(() => {
     let result = projects
     if (platform !== 'all') {
       result = result.filter(p => (p.agent_platform || 'claude-code') === platform)
+    }
+    if (showNewOnly) result = result.filter(p => p.is_new)
+    if (smallOnly) result = result.filter(p => p.stars_total < 1000)
+    if (sortBy === 'movers') {
+      result = [...result].sort((a, b) => (b.rank_delta || 0) - (a.rank_delta || 0))
+      result = result.map((p, i) => ({ ...p, rank: i + 1 }))
     }
     if (!debouncedSearch) return result
     const q = debouncedSearch.toLowerCase()
@@ -3187,7 +3196,7 @@ export default function App() {
       p.full_name.toLowerCase().includes(q) ||
       (p.description || '').toLowerCase().includes(q)
     )
-  }, [projects, platform, debouncedSearch])
+  }, [projects, platform, debouncedSearch, sortBy, showNewOnly, smallOnly])
 
   // Show banner when all stars_gained_7d are 0 (data is calibrating)
   const showBanner = !bannerDismissed && projects.length > 0 && projects.every(p => p.stars_gained_7d === 0)
@@ -3385,6 +3394,44 @@ export default function App() {
             </button>
           )}
         </div>
+      </div>
+
+      {/* ─── Filter Toggles ────────────────────────────────────── */}
+      <div style={{
+        display: 'flex',
+        gap: '8px',
+        marginBottom: '16px',
+        overflowX: 'auto',
+        WebkitOverflowScrolling: 'touch',
+        scrollbarWidth: 'none',
+        msOverflowStyle: 'none',
+      }}>
+        {[
+          { key: 'movers', label: '🔥 Biggest Movers', active: sortBy === 'movers', onClick: () => setSortBy(s => s === 'movers' ? 'rank' : 'movers') },
+          { key: 'new', label: '🆕 New This Week', active: showNewOnly, onClick: () => setShowNewOnly(v => !v) },
+          { key: 'small', label: '💎 Under 1k Stars', active: smallOnly, onClick: () => setSmallOnly(v => !v) },
+        ].map(t => (
+          <button
+            key={t.key}
+            onClick={t.onClick}
+            style={{
+              padding: '6px 14px',
+              borderRadius: '20px',
+              border: `1px solid ${t.active ? 'var(--gold)' : 'var(--border)'}`,
+              background: t.active ? 'rgba(255,184,48,0.12)' : 'transparent',
+              color: t.active ? 'var(--gold)' : 'var(--text-muted)',
+              fontFamily: 'var(--font-mono)',
+              fontSize: '12px',
+              fontWeight: t.active ? 600 : 400,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              transition: 'all 0.2s',
+              flexShrink: 0,
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
       {/* ─── Content ────────────────────────────────────────────── */}
