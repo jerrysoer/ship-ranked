@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { supabase } from './lib/supabase'
+import { PLATFORMS, PLATFORM_ORDER } from './lib/platforms'
+import PlatformTabs from './components/PlatformTabs'
 
 // ─── Analytics ───────────────────────────────────────────────────────────────
 
@@ -265,10 +267,23 @@ function getDeepLinkProject() {
   return slug.replace('--', '/')
 }
 
+function getInitialPlatform() {
+  const params = new URLSearchParams(window.location.search)
+  const p = params.get('platform')
+  return PLATFORM_ORDER.includes(p) ? p : 'all'
+}
+
 function getSignalLabel(signal) {
   if (signal === 'claude-md') return 'CLAUDE.md'
   if (signal === 'topic-claude-code') return 'Claude Code'
   if (signal === 'topic-vibe-coding') return 'Vibe Coded'
+  if (signal === 'openclaw-json') return 'openclaw.json'
+  if (signal === 'topic-openclaw') return 'OpenClaw'
+  if (signal === 'topic-openclaw-ai') return 'OpenClaw AI'
+  if (signal === 'agents-md-codex') return 'AGENTS.md'
+  if (signal === 'topic-codex-cli') return 'Codex CLI'
+  if (signal === 'topic-codex-openai') return 'OpenAI Codex'
+  if (signal === 'codex-md') return 'codex.md'
   return signal || ''
 }
 
@@ -447,7 +462,26 @@ function Sparkline({ data, width = 48, height = 16, color = 'var(--up)' }) {
 
 // ─── Podium Card ─────────────────────────────────────────────────────────────
 
-function PodiumCard({ project, position, copiedId, setCopiedId, highlighted, sparklineData, onProjectClick }) {
+function PlatformPill({ project }) {
+  const p = PLATFORMS[project.agent_platform || 'claude-code']
+  if (!p) return null
+  return (
+    <span style={{
+      fontFamily: 'var(--font-body)',
+      fontSize: '10px',
+      fontWeight: 500,
+      color: p.color,
+      background: `${p.color}26`,
+      padding: '2px 8px',
+      borderRadius: '4px',
+      whiteSpace: 'nowrap',
+    }}>
+      {p.emoji} {p.label}
+    </span>
+  )
+}
+
+function PodiumCard({ project, position, copiedId, setCopiedId, highlighted, sparklineData, onProjectClick, showPlatform }) {
   const starsAnimated = useCountUp(project.stars_gained_7d, 800, 500 + position * 100)
   const isFirst = position === 0
 
@@ -504,6 +538,7 @@ function PodiumCard({ project, position, copiedId, setCopiedId, highlighted, spa
           {project.rank}
         </span>
         <DeltaBadge project={project} animate delay={800 + position * 100} />
+        {showPlatform && <PlatformPill project={project} />}
       </div>
 
       {/* Avatar + name */}
@@ -596,7 +631,7 @@ function PodiumCard({ project, position, copiedId, setCopiedId, highlighted, spa
 
 // ─── Chart Row ───────────────────────────────────────────────────────────────
 
-function ChartRow({ project, index, copiedId, setCopiedId, highlighted, sparklineData, onProjectClick }) {
+function ChartRow({ project, index, copiedId, setCopiedId, highlighted, sparklineData, onProjectClick, showPlatform }) {
   const [ref, isVisible] = useScrollReveal()
 
   return (
@@ -763,6 +798,13 @@ function ChartRow({ project, index, copiedId, setCopiedId, highlighted, sparklin
       >
         {getCategoryLabel(project.category)}
       </span>
+
+      {/* Platform pill (All tab only) */}
+      {showPlatform && (
+        <span className="row-category" style={{ flexShrink: 0 }}>
+          <PlatformPill project={project} />
+        </span>
+      )}
 
       {/* Share */}
       <ShareButton project={project} copiedId={copiedId} setCopiedId={setCopiedId} size="small" />
@@ -1008,6 +1050,7 @@ function ProjectModal({ project, sparklineData, copiedId, setCopiedId, onClose }
               {getSignalLabel(project.claude_signal)}
             </span>
           )}
+          <PlatformPill project={project} />
         </div>
 
         {/* Stats grid */}
@@ -3018,6 +3061,8 @@ export default function App() {
   const [projects, setProjects] = useState([])
   const [loading, setLoading] = useState(true)
   const [category, setCategory] = useState(getInitialCategory)
+  const [platform, setPlatform] = useState(getInitialPlatform)
+  const [platformCounts, setPlatformCounts] = useState({})
   const [copiedId, setCopiedId] = useState(null)
   const [scrolled, setScrolled] = useState(false)
   const [highlightedProject, setHighlightedProject] = useState(null)
@@ -3060,6 +3105,7 @@ export default function App() {
       let query = supabase.from('ranked_projects').select('*')
         .eq('review_status', 'approved')
         .neq('category', 'featured')
+        .neq('agent_platform', 'other')
 
       if (sortBy === 'movers') {
         query = query.order('rank_delta', { ascending: false })
@@ -3067,7 +3113,7 @@ export default function App() {
         query = query.order('rank', { ascending: true })
       }
 
-      query = query.limit(25)
+      query = query.limit(100)
       if (category !== 'all') query = query.eq('category', category)
       if (showNewOnly) query = query.eq('is_new', true)
       if (smallOnly) query = query.lt('stars_total', 1000)
@@ -3147,22 +3193,49 @@ export default function App() {
     track('category-filter', { category: value })
   }, [])
 
+  // Platform change handler
+  const handlePlatformChange = useCallback((value) => {
+    setPlatform(value)
+    const url = new URL(window.location)
+    if (value === 'all') {
+      url.searchParams.delete('platform')
+    } else {
+      url.searchParams.set('platform', value)
+    }
+    window.history.replaceState({}, '', url)
+    track('platform-filter', { platform: value })
+  }, [])
+
   // Banner dismiss handler
   const dismissBanner = useCallback(() => {
     setBannerDismissed(true)
     try { sessionStorage.setItem('sr-banner-dismissed', '1') } catch { /* noop */ }
   }, [])
 
-  // Client-side search filter
+  // Compute platform counts from loaded data
+  useEffect(() => {
+    const counts = projects.reduce((acc, p) => {
+      const key = p.agent_platform || 'claude-code'
+      acc[key] = (acc[key] || 0) + 1
+      return acc
+    }, {})
+    setPlatformCounts(counts)
+  }, [projects])
+
+  // Client-side platform + search filter
   const filteredProjects = useMemo(() => {
-    if (!debouncedSearch) return projects
+    let result = projects
+    if (platform !== 'all') {
+      result = result.filter(p => (p.agent_platform || 'claude-code') === platform)
+    }
+    if (!debouncedSearch) return result
     const q = debouncedSearch.toLowerCase()
-    return projects.filter(p =>
+    return result.filter(p =>
       p.name.toLowerCase().includes(q) ||
       p.full_name.toLowerCase().includes(q) ||
       (p.description || '').toLowerCase().includes(q)
     )
-  }, [projects, debouncedSearch])
+  }, [projects, platform, debouncedSearch])
 
   // Show banner when all stars_gained_7d are 0 (data is calibrating)
   const showBanner = !bannerDismissed && projects.length > 0 && projects.every(p => p.stars_gained_7d === 0)
@@ -3241,10 +3314,17 @@ export default function App() {
           margin: '0 auto',
           lineHeight: 1.6,
         }}>
-          Live leaderboard ranking Claude Code projects by weekly star momentum.
+          Live leaderboard ranking AI-agent-built projects by weekly star momentum.
           No algorithms — just what people are starring right now.
         </p>
       </div>
+
+      {/* ─── Platform Tabs ──────────────────────────────────────────── */}
+      <PlatformTabs
+        platform={platform}
+        onChange={handlePlatformChange}
+        counts={platformCounts}
+      />
 
       {/* ─── Calibration Banner ───────────────────────────────────── */}
       {showBanner && (
@@ -3533,6 +3613,7 @@ export default function App() {
                   highlighted={highlightedProject === project.full_name}
                   sparklineData={sparklines[project.id]}
                   onProjectClick={setDetailProject}
+                  showPlatform={platform === 'all'}
                 />
               ))}
             </div>
@@ -3553,6 +3634,7 @@ export default function App() {
                   highlighted={highlightedProject === project.full_name}
                   sparklineData={sparklines[project.id]}
                   onProjectClick={setDetailProject}
+                  showPlatform={platform === 'all'}
                 />
               ))}
             </div>

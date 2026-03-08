@@ -52,7 +52,15 @@ ALTER TABLE ranked_projects ADD COLUMN builder_x_handle TEXT;
 ALTER TABLE ranked_projects ADD COLUMN starred_by_shipranked BOOLEAN DEFAULT false;
 ALTER TABLE ranked_projects ADD COLUMN account_age_days INTEGER;
 
+-- ─── Multi-Platform Expansion (PRD3) ────────────────────────────────────────
+
+ALTER TABLE ranked_projects
+  ADD COLUMN agent_platform TEXT NOT NULL DEFAULT 'claude-code'
+  CHECK (agent_platform IN ('claude-code', 'openclaw', 'codex', 'gemini', 'other'));
+
 CREATE INDEX idx_ranked_projects_review ON ranked_projects(review_status);
+CREATE INDEX idx_projects_platform
+  ON ranked_projects(agent_platform, review_status, stars_gained_7d DESC);
 
 -- Weekly content drafts (X threads, Reddit posts)
 CREATE TABLE weekly_drafts (
