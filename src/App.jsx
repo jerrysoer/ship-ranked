@@ -3187,15 +3187,17 @@ export default function App() {
     if (smallOnly) result = result.filter(p => p.stars_total < 1000)
     if (sortBy === 'movers') {
       result = [...result].sort((a, b) => (b.rank_delta || 0) - (a.rank_delta || 0))
-      result = result.map((p, i) => ({ ...p, rank: i + 1 }))
     }
-    if (!debouncedSearch) return result
-    const q = debouncedSearch.toLowerCase()
-    return result.filter(p =>
-      p.name.toLowerCase().includes(q) ||
-      p.full_name.toLowerCase().includes(q) ||
-      (p.description || '').toLowerCase().includes(q)
-    )
+    if (debouncedSearch) {
+      const q = debouncedSearch.toLowerCase()
+      result = result.filter(p =>
+        p.name.toLowerCase().includes(q) ||
+        p.full_name.toLowerCase().includes(q) ||
+        (p.description || '').toLowerCase().includes(q)
+      )
+    }
+    // Always re-rank to close gaps from server-side exclusions
+    return result.map((p, i) => ({ ...p, rank: i + 1 }))
   }, [projects, platform, debouncedSearch, sortBy, showNewOnly, smallOnly])
 
   // Show banner when all stars_gained_7d are 0 (data is calibrating)
