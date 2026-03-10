@@ -24,7 +24,9 @@ export default function PlatformTabs({ platform, onChange, counts }) {
         const p = PLATFORMS[key]
         const isActive = platform === key
         const count = key === 'all'
-          ? Object.values(counts).reduce((a, b) => a + b, 0)
+          ? Object.entries(counts)
+              .filter(([k]) => k !== 'mcp-server')
+              .reduce((a, [, b]) => a + b, 0)
           : counts[key] || 0
 
         return (
