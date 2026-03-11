@@ -62,6 +62,14 @@ CREATE INDEX idx_ranked_projects_review ON ranked_projects(review_status);
 CREATE INDEX idx_projects_platform
   ON ranked_projects(agent_platform, review_status, stars_gained_7d DESC);
 
+-- ─── MCP Server Flag (non-exclusive with agent_platform) ─────────────────────
+
+ALTER TABLE ranked_projects
+  ADD COLUMN is_mcp_server BOOLEAN NOT NULL DEFAULT false;
+
+CREATE INDEX idx_projects_mcp ON ranked_projects(is_mcp_server)
+  WHERE is_mcp_server = true;
+
 -- Weekly content drafts (X threads, Reddit posts)
 CREATE TABLE weekly_drafts (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),

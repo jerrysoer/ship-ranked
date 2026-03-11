@@ -3091,7 +3091,7 @@ export default function App() {
       const { data } = await supabase.from('ranked_projects').select('*')
         .eq('review_status', 'approved')
         .neq('category', 'featured')
-        .neq('agent_platform', 'other')
+        .or('agent_platform.neq.other,is_mcp_server.eq.true')
         .order('rank', { ascending: true })
         .limit(100)
 
@@ -3173,6 +3173,7 @@ export default function App() {
     const counts = projects.reduce((acc, p) => {
       const key = p.agent_platform || 'claude-code'
       acc[key] = (acc[key] || 0) + 1
+      if (p.is_mcp_server) acc['mcp-server'] = (acc['mcp-server'] || 0) + 1
       return acc
     }, {})
     setPlatformCounts(counts)

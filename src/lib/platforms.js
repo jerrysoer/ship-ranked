@@ -23,7 +23,13 @@ export const PLATFORMS = {
     color: '#10A37F',
     description: 'Built with OpenAI Codex CLI',
   },
+  'mcp-server': {
+    label: 'MCP Servers',
+    emoji: '\u{1F517}',
+    color: '#6366F1',
+    description: 'Model Context Protocol servers',
+  },
   // gemini: reserved, not rendered in Phase 1
 }
 
-export const PLATFORM_ORDER = ['all', 'claude-code', 'openclaw', 'codex']
+export const PLATFORM_ORDER = ['all', 'claude-code', 'openclaw', 'codex', 'mcp-server']

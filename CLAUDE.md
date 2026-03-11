@@ -290,6 +290,7 @@ Skipped if fewer than 10 approved projects in chart.
 - Claude amber (Claude Code tab): `#FF8C42`
 - OpenClaw red: `#E84545`
 - Codex green: `#10A37F`
+- MCP indigo (MCP Servers tab): `#6366F1`
 
 **Typography:**
 - Ranks: Syne 800
