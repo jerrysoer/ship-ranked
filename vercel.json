@@ -15,7 +15,7 @@
     { "source": "/builder/:handle", "destination": "/api/share?builder=:handle" }
   ],
   "functions": {
-    "api/cron/fetch-projects.js": { "maxDuration": 120 },
+    "api/cron/fetch-projects.js": { "maxDuration": 300 },
     "api/badge.js": { "maxDuration": 5 },
     "api/og.js": { "maxDuration": 5 },
     "api/share.js": { "maxDuration": 5 },
