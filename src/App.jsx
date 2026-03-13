@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { supabase } from './lib/supabase'
-import { PLATFORMS, PLATFORM_ORDER } from './lib/platforms'
+import { PLATFORMS, PLATFORM_ORDER, AGENT_TABS } from './lib/platforms'
 import { filterProjects } from './lib/filterProjects'
 import PlatformTabs from './components/PlatformTabs'
 
@@ -176,6 +176,43 @@ const MOCK_DATA = [
   },
 ]
 
+const MOCK_MCP_DATA = [
+  {
+    id: 'github:modelcontextprotocol/servers',
+    name: 'servers',
+    full_name: 'modelcontextprotocol/servers',
+    description: 'Reference implementations of MCP servers for common services',
+    url: 'https://github.com/modelcontextprotocol/servers',
+    builder_handle: 'modelcontextprotocol',
+    avatar_url: 'https://avatars.githubusercontent.com/u/182288808',
+    category: 'tools',
+    stars_total: 18500,
+    stars_gained_7d: 1240,
+    rank: 1,
+    rank_delta: 0,
+    is_new: false,
+    claude_signal: 'mcp-json',
+    agent_platform: 'mcp',
+  },
+  {
+    id: 'github:punkpeye/awesome-mcp-servers',
+    name: 'awesome-mcp-servers',
+    full_name: 'punkpeye/awesome-mcp-servers',
+    description: 'A curated list of MCP servers for AI assistants',
+    url: 'https://github.com/punkpeye/awesome-mcp-servers',
+    builder_handle: 'punkpeye',
+    avatar_url: 'https://avatars.githubusercontent.com/u/1234567',
+    category: 'tools',
+    stars_total: 8200,
+    stars_gained_7d: 670,
+    rank: 2,
+    rank_delta: 1,
+    is_new: false,
+    claude_signal: 'topic-mcp-server',
+    agent_platform: 'mcp',
+  },
+]
+
 // ─── Categories ──────────────────────────────────────────────────────────────
 
 const CATEGORIES = [
@@ -280,6 +317,10 @@ function getSignalLabel(signal) {
   if (signal === 'topic-codex-cli') return 'Codex CLI'
   if (signal === 'topic-codex-openai') return 'OpenAI Codex'
   if (signal === 'codex-md') return 'codex.md'
+  if (signal === 'mcp-json') return 'mcp.json'
+  if (signal === 'topic-mcp-server') return 'MCP Server'
+  if (signal === 'topic-mcp') return 'MCP'
+  if (signal === 'mcp-sdk-npm') return 'MCP SDK'
   return signal || ''
 }
 
@@ -292,9 +333,10 @@ function stripHtml(str) {
 
 async function copyShare(project, setCopiedId) {
   const shareUrl = `${API_BASE}/p/${project.full_name.replace('/', '--')}`
+  const platformLabel = project.agent_platform === 'mcp' ? 'MCP Server' : 'Built with Claude Code'
   const text = `My project ranked #${project.rank} on ShipRanked this week\n\n` +
     `★ ${project.stars_total.toLocaleString()} total stars  ↑ +${project.stars_gained_7d} gained this week\n` +
-    `Built with Claude Code\n\n` +
+    `${platformLabel}\n\n` +
     `${project.url}\n` +
     `See the full chart → ${shareUrl}`
   try {
@@ -3054,7 +3096,8 @@ export default function App() {
   if (view === 'recap') return <WeeklyRecap />
   if (view === 'builder') return <BuilderProfile />
 
-  const [projects, setProjects] = useState([])
+  const [agentProjects, setAgentProjects] = useState([])
+  const [mcpProjects, setMcpProjects] = useState([])
   const [loading, setLoading] = useState(true)
   const [platform, setPlatform] = useState(getInitialPlatform)
   const [platformCounts, setPlatformCounts] = useState({})
@@ -3078,34 +3121,48 @@ export default function App() {
   const [sparklines, setSparklines] = useState({})
   const [detailProject, setDetailProject] = useState(null)
 
-  // Fetch data
+  // Derived: active dataset depends on selected tab
+  const projects = platform === 'mcp' ? mcpProjects : agentProjects
+
+  // Fetch data (agent + MCP in parallel, once on mount)
   useEffect(() => {
     async function fetchData() {
       setLoading(true)
       if (!supabase) {
-        setProjects([...MOCK_DATA])
+        setAgentProjects([...MOCK_DATA])
+        setMcpProjects([...MOCK_MCP_DATA])
         setLoading(false)
         return
       }
 
-      const { data } = await supabase.from('ranked_projects').select('*')
-        .eq('review_status', 'approved')
-        .neq('category', 'featured')
-        .or('agent_platform.neq.other,is_mcp_server.eq.true')
-        .order('rank', { ascending: true })
-        .limit(100)
+      const [agentRes, mcpRes] = await Promise.all([
+        supabase.from('ranked_projects').select('*')
+          .eq('review_status', 'approved')
+          .neq('category', 'featured')
+          .neq('agent_platform', 'other')
+          .neq('agent_platform', 'mcp')
+          .order('rank', { ascending: true })
+          .limit(100),
+        supabase.from('ranked_projects').select('*')
+          .eq('review_status', 'approved')
+          .eq('agent_platform', 'mcp')
+          .neq('category', 'featured')
+          .order('rank', { ascending: true })
+          .limit(100),
+      ])
 
-      setProjects(data || [])
+      setAgentProjects(agentRes.data || [])
+      setMcpProjects(mcpRes.data || [])
       setLoading(false)
     }
     fetchData()
-  }, [platform])
+  }, [])
 
-  // Fetch sparkline snapshots
+  // Fetch sparkline snapshots (covers both datasets)
   useEffect(() => {
-    if (!supabase || projects.length === 0) return
+    if (!supabase || (agentProjects.length === 0 && mcpProjects.length === 0)) return
     async function fetchSparklines() {
-      const projectIds = projects.map(p => p.id)
+      const projectIds = [...agentProjects, ...mcpProjects].map(p => p.id)
       const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString()
       const { data } = await supabase
         .from('ranked_snapshots')
@@ -3122,7 +3179,7 @@ export default function App() {
       setSparklines(grouped)
     }
     fetchSparklines()
-  }, [projects])
+  }, [agentProjects, mcpProjects])
 
   // Deep-link: scroll to ?project= and highlight
   useEffect(() => {
@@ -3170,19 +3227,21 @@ export default function App() {
 
   // Compute platform counts from loaded data
   useEffect(() => {
-    const counts = projects.reduce((acc, p) => {
+    const counts = agentProjects.reduce((acc, p) => {
       const key = p.agent_platform || 'claude-code'
       acc[key] = (acc[key] || 0) + 1
-      if (p.is_mcp_server) acc['mcp-server'] = (acc['mcp-server'] || 0) + 1
       return acc
     }, {})
+    counts.mcp = mcpProjects.length
     setPlatformCounts(counts)
-  }, [projects])
+  }, [agentProjects, mcpProjects])
 
   // Client-side platform + toggle + search filter
+  // On MCP tab, pass 'all' as platform filter since all items are already MCP
+  const filterPlatform = platform === 'mcp' ? 'all' : platform
   const filteredProjects = useMemo(() =>
-    filterProjects(projects, { platform, sortBy, showNewOnly, smallOnly, search: debouncedSearch })
-  , [projects, platform, debouncedSearch, sortBy, showNewOnly, smallOnly])
+    filterProjects(projects, { platform: filterPlatform, sortBy, showNewOnly, smallOnly, search: debouncedSearch })
+  , [projects, filterPlatform, debouncedSearch, sortBy, showNewOnly, smallOnly])
 
   // Show banner when all stars_gained_7d are 0 (data is calibrating)
   const showBanner = !bannerDismissed && projects.length > 0 && projects.every(p => p.stars_gained_7d === 0)

@@ -93,25 +93,15 @@ describe('platform filtering', () => {
     expect(result).toHaveLength(1)
   })
 
-  it('mcp-server filter matches is_mcp_server flag', () => {
+  it('mcp platform filter works like any other platform', () => {
     const projects = [
-      makeProject({ name: 'mcp-tool', agent_platform: 'claude-code', is_mcp_server: true }),
-      makeProject({ name: 'regular', agent_platform: 'claude-code', is_mcp_server: false }),
-      makeProject({ name: 'standalone-mcp', agent_platform: 'other', is_mcp_server: true }),
+      makeProject({ name: 'mcp-tool', agent_platform: 'mcp' }),
+      makeProject({ name: 'regular', agent_platform: 'claude-code' }),
     ]
-    const result = filterProjects(projects, { ...defaults, platform: 'mcp-server' })
-    expect(result).toHaveLength(2)
-    expect(result.map(p => p.name)).toEqual(['mcp-tool', 'standalone-mcp'])
-    expect(result.map(p => p.rank)).toEqual([1, 2])
-  })
-
-  it('mcp-server project also appears in its agent_platform tab', () => {
-    const projects = [
-      makeProject({ name: 'mcp-tool', agent_platform: 'claude-code', is_mcp_server: true }),
-      makeProject({ name: 'regular', agent_platform: 'claude-code', is_mcp_server: false }),
-    ]
-    const result = filterProjects(projects, { ...defaults, platform: 'claude-code' })
-    expect(result).toHaveLength(2)
+    const result = filterProjects(projects, { ...defaults, platform: 'mcp' })
+    expect(result).toHaveLength(1)
+    expect(result[0].name).toBe('mcp-tool')
+    expect(result[0].rank).toBe(1)
   })
 })
 

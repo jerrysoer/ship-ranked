@@ -23,13 +23,14 @@ export const PLATFORMS = {
     color: '#10A37F',
     description: 'Built with OpenAI Codex CLI',
   },
-  'mcp-server': {
+  mcp: {
     label: 'MCP Servers',
-    emoji: '\u{1F517}',
-    color: '#6366F1',
+    emoji: '\u{1F50C}',
+    color: '#8B5CF6',
     description: 'Model Context Protocol servers',
   },
-  // gemini: reserved, not rendered in Phase 1
 }
 
-export const PLATFORM_ORDER = ['all', 'claude-code', 'openclaw', 'codex', 'mcp-server']
+export const AGENT_TABS = ['all', 'claude-code', 'openclaw', 'codex']
+export const EXTRA_TABS = ['mcp']
+export const PLATFORM_ORDER = [...AGENT_TABS, ...EXTRA_TABS]

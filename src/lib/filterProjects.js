@@ -7,9 +7,7 @@
  */
 export function filterProjects(projects, { platform, sortBy, showNewOnly, smallOnly, search }) {
   let result = projects
-  if (platform === 'mcp-server') {
-    result = result.filter(p => p.is_mcp_server)
-  } else if (platform !== 'all') {
+  if (platform !== 'all') {
     result = result.filter(p => (p.agent_platform || 'claude-code') === platform)
   }
   if (showNewOnly) result = result.filter(p => p.is_new)
